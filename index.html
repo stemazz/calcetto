@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e7a3d">
+  <title>Calcetto tra Amici</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <!-- Intestazione -->
+  <header id="header" class="header" hidden>
+    <button id="btn-admin" class="header-btn" title="Area Admin" hidden>⚙️</button>
+    <div class="header-title">⚽ Calcetto tra Amici</div>
+    <button id="btn-esci" class="header-btn" title="Esci">⏻</button>
+  </header>
+
+  <!-- Contenuto delle pagine -->
+  <main id="app" class="app"></main>
+
+  <!-- Menu di navigazione in basso (mobile-first) -->
+  <nav id="bottom-nav" class="bottom-nav" hidden>
+    <a href="#/home"     data-nav="home"        class="nav-item"><span>🏠</span>Home</a>
+    <a href="#/calendario" data-nav="calendario" class="nav-item"><span>📅</span>Calendario</a>
+    <a href="#/voti"     data-nav="voti"        class="nav-item"><span>⭐</span>Voti</a>
+    <a href="#/statistiche" data-nav="statistiche" class="nav-item"><span>📊</span>Statistiche</a>
+    <a href="#/profilo"  data-nav="profilo"     class="nav-item"><span>👤</span>Profilo</a>
+  </nav>
+
+  <!-- Libreria Supabase (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
