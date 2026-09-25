@@ -11,7 +11,7 @@ export function el(tag, attrs = {}, children = []) {
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
-  for (const c of [].concat(children)) {
+  for (const c of [].concat(children).flat(Infinity)) {
     if (c === null || c === undefined) continue;
     node.append(c.nodeType ? c : document.createTextNode(c));
   }
