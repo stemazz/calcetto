@@ -2,6 +2,10 @@
 // AREA ADMIN — gestione completa: partite, utenti, voti, impostazioni.
 // Include features 1-5: num_squadre flessibili, MVP, jolly, allenatore, voto
 // commenti+chiusura anticipata già attivi lato server.
+//
+// FIX 2026-09-27: corretto errore di sintassi (parentesi in eccesso) nel
+// blocco "N° squadre / Gioc. per squadra" della sezione Dati partita, che
+// bloccava il caricamento dell'intero file (e quindi dell'intera app).
 // ============================================================================
 import { state, profiloPerId } from '../state.js';
 import {
@@ -152,7 +156,7 @@ async function riempiGestione(p, box, contenuto) {
     ]),
     el('div', { class: 'form-riga' }, [
       el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['N° squadre']), eNumSq]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Gioc/squadra']), eGiocSq)]),
+      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Gioc/squadra']), eGiocSq]),
     ]),
     el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
       e.target.disabled = true;
@@ -267,7 +271,7 @@ async function riempiGestione(p, box, contenuto) {
 
   // JOLLY — scegli un giocatore e assegna a più squadre
   blocco.append(el('div', { class: 'sezione-titolo' }, ['🎭 Jolly (assegna a più squadre)']));
-  const selJolly = el('select', { class: 'input', style: 'min-height:40px,max-width:200px' },
+  const selJolly = el('select', { class: 'input', style: 'min-height:40px;max-width:200px' },
     [el('option', { value: '' }, ['— scegli giocatore —']),
      ...iscritti.filter(x => !x.in_attesa).map(g => el('option', { value: g.id }, [nomeProfilo(g)]))]);
   const cbA = el('input', { type: 'checkbox' }), cbB = el('input', { type: 'checkbox' }),
@@ -346,6 +350,7 @@ async function riempiGestione(p, box, contenuto) {
       candidatiBox.append(chip);
     }
   }
+  renderCandidati();
   blocco.append(candidatiBox);
   blocco.append(el('div', { class: 'riga-sub', style: 'margin-top:6px' },
     ['Solo i profili marcati "tuttofare" possono poi scegliere uno di questi come MVP.']));
