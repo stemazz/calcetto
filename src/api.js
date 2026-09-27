@@ -20,6 +20,7 @@ export function messaggio(e) {
   if (/Invalid login/i.test(m)) return 'Email o password non corretti.';
   if (/row-level security|permission denied/i.test(m)) return 'Operazione non consentita.';
   if (/Password should be at least/i.test(m)) return 'Password troppo corta (minimo 6 caratteri).';
+  if (/Bucket .* not found/i.test(m)) return 'Bucket foto non configurato.';
   return m;
 }
 
@@ -27,7 +28,7 @@ export function messaggio(e) {
 export async function getImpostazioni() {
   const { data, error } = await sb.from('impostazioni').select('*').eq('id', 1).single();
   if (error) throw new Error(messaggio(error));
-  return data; // { votazione_ore, min_partite_classifica, posti_default }
+  return data;
 }
 export async function salvaImpostazioni(patch) {
   const { error } = await sb.from('impostazioni').update(patch).eq('id', 1);
@@ -60,7 +61,6 @@ export async function eliminaPartita(id) {
 }
 
 // ------------------------------- ISCRIZIONI --------------------------------
-/** Iscritti a una partita (profilo + flag lista d'attesa), ordine di iscrizione */
 export async function iscrittiPartita(matchId) {
   const { data, error } = await sb.from('match_registrations')
     .select('in_attesa, profilo:profiles(*)')
@@ -72,8 +72,6 @@ export const iscriviti = (matchId) => rpc('iscriviti_partita', { p_match: matchI
 export const cancellati = (matchId) => rpc('cancellati_partita', { p_match: matchId });
 export const iscriviManuale = (matchId, userId) => rpc('iscrivi_manuale', { p_match: matchId, p_user: userId });
 export const rimuoviDaPartita = (matchId, userId) => rpc('rimuovi_da_partita', { p_match: matchId, p_user: userId });
-
-/** Le mie iscrizioni: mappa matchId -> 'iscritto' | 'attesa' */
 export async function mieIscrizioni(userId) {
   const { data, error } = await sb.from('match_registrations')
     .select('match_id, in_attesa').eq('user_id', userId);
@@ -82,29 +80,32 @@ export async function mieIscrizioni(userId) {
 }
 
 // -------------------------------- SQUADRE ----------------------------------
+// Squadra ora è TEXT (A/B/C/D). Ritorna { giocatore_id, squadra, profilo, ruolo }
 export async function squadrePartita(matchId) {
-  const { data, error } = await sb.from('squadre')
-    .select('squadra, profilo:profiles(*)').eq('match_id', matchId);
-  if (error) throw new Error(messaggio(error));
-  return data.map(r => ({ ...r.profilo, squadra: r.squadra }));
+  const [{ data: sq }, { data: mr }] = await Promise.all([
+    sb.from('squadre').select('giocatore_id, squadra, profilo:profiles(*)').eq('match_id', matchId),
+    sb.from('match_ruoli').select('giocatore_id, squadra, ruolo_partita').eq('match_id', matchId),
+  ]);
+  const ruoloMappa = new Map();
+  for (const r of mr || []) {
+    ruoloMappa.set(`${r.giocatore_id}|${r.squadra}`, r.ruolo_partita);
+  }
+  return (sq || []).map(r => ({
+    ...r.profilo,
+    id: r.profilo.id,
+    squadra: r.squadra,
+    ruolo: ruoloMappa.get(`${r.giocatore_id}|${r.squadra}`) || 'giocatore',
+  }));
 }
 export const generaSquadreBilate = (matchId) => rpc('genera_squadre_bilate', { p_match: matchId });
-/** Assegna un giocatore a una squadra ('A'/'B') o lo rimuove (squadra = null) */
-export async function impostaSquadra(matchId, userId, squadra) {
-  if (squadra) {
-    const { error } = await sb.from('squadre')
-      .upsert({ match_id: matchId, giocatore_id: userId, squadra },
-              { onConflict: 'match_id,giocatore_id' });
-    if (error) throw new Error(messaggio(error));
-  } else {
-    const { error } = await sb.from('squadre')
-      .delete().eq('match_id', matchId).eq('giocatore_id', userId);
-    if (error) throw new Error(messaggio(error));
-  }
-}
+export const impostaSquadra = (matchId, userId, squadra) =>
+  rpc('imposta_squadra', { p_match: matchId, p_user: userId, p_squadra: squadra });
+export const impostaAllenatore = (matchId, userId, squadra) =>
+  rpc('imposta_allenatore', { p_match: matchId, p_user: userId, p_squadra: squadra });
+export const segnaJolly = (matchId, userId, squadre) =>
+  rpc('segna_jolly', { p_match: matchId, p_user: userId, p_squadre: squadre });
 
 // ---------------------------------- GOL ------------------------------------
-/** Marcatori raggruppati: [{ id, profilo, gol, autogol }] */
 export async function marcatoriPartita(matchId) {
   const { data, error } = await sb.from('goals')
     .select('autogol, profilo:profiles(*)').eq('match_id', matchId);
@@ -117,33 +118,37 @@ export async function marcatoriPartita(matchId) {
   }
   return [...mappa.values()];
 }
-/** Admin: risultato + marcatori (jsonb) e apertura automatica della votazione */
 export const impostaRisultato = (matchId, golA, golB, marcatori) =>
   rpc('imposta_risultato', { p_match: matchId, p_gol_a: golA, p_gol_b: golB, p_marcatori: marcatori });
 
 // ---------------------------------- VOTI -----------------------------------
-/** I MIEI voti in una partita: mappa votato_id -> { voto, commento } */
 export async function mieiVoti(matchId, userId) {
   const { data, error } = await sb.from('votes')
     .select('votato_id, voto, commento').eq('match_id', matchId).eq('votante_id', userId);
   if (error) throw new Error(messaggio(error));
   return Object.fromEntries(data.map(v => [v.votato_id, v]));
 }
-/** Medie voti per giocatore in una partita (vista pubblica e anonima) */
 export async function medieVotiPartita(matchId) {
   const { data, error } = await sb.from('vista_voti_per_partita')
     .select('votato_id, media_voto, num_voti').eq('match_id', matchId);
   if (error) throw new Error(messaggio(error));
   return Object.fromEntries(data.map(v => [v.votato_id, v]));
 }
+// Commenti anonimi + media (per pagina dettaglio partita)
+export async function votiConCommentiPartita(matchId) {
+  const { data, error } = await sb.from('vista_voti_con_commenti')
+    .select('votato_id, num_voti, media_voto, commenti_anonimi').eq('match_id', matchId);
+  if (error) throw new Error(messaggio(error));
+  return Object.fromEntries((data || []).map(v => [v.votato_id, v]));
+}
 export const salvaVoto = (matchId, votatoId, voto, commento) =>
   rpc('salva_voto', { p_match: matchId, p_votato: votatoId, p_voto: voto, p_commento: commento });
 export const gestisciVotazione = (matchId, azione) =>
   rpc('gestisci_votazione', { p_match: matchId, p_azione: azione });
+// Chiude la votazione di una partita immediatamente (anche se non scaduta)
+export const chiudiVotazioneOra = (matchId) => gestisciVotazione(matchId, 'chiudi');
 export const aggiornaStatoVotazioni = () => rpc('aggiorna_stato_votazioni', {});
 
-// --- SOLO ADMIN (l'RLS mostra questi dati solo agli admin) ------------------
-/** Tutti i voti di una partita con nome di chi ha votato e di chi è stato votato */
 export async function tuttiVoti(matchId) {
   const { data, error } = await sb.from('votes').select(`
     id, voto, commento,
@@ -157,7 +162,6 @@ export async function eliminaVoto(id) {
   const { error } = await sb.from('votes').delete().eq('id', id);
   if (error) throw new Error(messaggio(error));
 }
-/** Admin: inserisce o corregge un voto (upsert sulla triple chiave) */
 export async function salvaVotoAdmin(matchId, votanteId, votatoId, voto, commento) {
   const { error } = await sb.from('votes')
     .upsert({ match_id: matchId, votante_id: votanteId, votato_id: votatoId,
@@ -166,22 +170,54 @@ export async function salvaVotoAdmin(matchId, votanteId, votatoId, voto, comment
   if (error) throw new Error(messaggio(error));
 }
 
+// ---------------------------------- MVP ------------------------------------
+// Imposta il flag "tuttofare" su un profilo (admin only)
+export const setTuttofare = (userId, val) => rpc('set_tuttofare', { p_user: userId, p_val: val });
+// Salva il voto MVP (scelta singola, solo tuttofare)
+export const salvaMVP = (matchId, candidatoId) =>
+  rpc('salva_mvp', { p_match: matchId, p_candidato: candidatoId });
+// MVP candidati per una partita
+export async function candidatiMVP(matchId) {
+  const { data, error } = await sb.from('mvp_candidates')
+    .select('giocatore_id, profilo:profiles(*)').eq('match_id', matchId);
+  if (error) throw new Error(messaggio(error));
+  return (data || []).map(d => ({ ...d.profilo, id: d.giocatore_id }));
+}
+export async function setCandidatiMVP(matchId, ids) {
+  const { error: e1 } = await sb.from('mvp_candidates').delete().eq('match_id', matchId);
+  if (e1) throw new Error(messaggio(e1));
+  if (!ids?.length) return;
+  const rows = ids.map(gid => ({ match_id: matchId, giocatore_id: gid }));
+  const { error } = await sb.from('mvp_candidates').insert(rows);
+  if (error) throw new Error(messaggio(error));
+}
+export async function risultatoMVP(matchId) {
+  const { data, error } = await sb.from('vista_mvp_risultato')
+    .select('candidato_id, num_voti_mvp, nome, cognome, soprannome, foto_url')
+    .eq('match_id', matchId).order('num_voti_mvp', { ascending: false }).limit(5);
+  if (error) throw new Error(messaggio(error));
+  return data;
+}
+export async function mioMVPScelto(matchId, userId) {
+  const { data, error } = await sb.from('mvp_votes')
+    .select('candidato_id').eq('match_id', matchId).eq('votante_id', userId).maybeSingle();
+  if (error && error.code !== 'PGRST116') throw new Error(messaggio(error));
+  return data?.candidato_id || null;
+}
+
 // ------------------------------ STATISTICHE --------------------------------
-/** Statistiche aggregate di tutti i giocatori (vista del database) */
 export async function statisticheGlobali() {
   const { data, error } = await sb.from('vista_statistiche_giocatore')
     .select('*').order('media_voti', { ascending: false, nullsFirst: false });
   if (error) throw new Error(messaggio(error));
   return data;
 }
-/** MVP (posizione 1) di ogni partita giocata, dalla più recente */
 export async function listaMVP() {
   const { data, error } = await sb.from('vista_mvp_partita')
     .select('*').eq('pos', 1).order('data', { ascending: false });
   if (error) throw new Error(messaggio(error));
   return data;
 }
-/** Andamento dei voti ricevuti da un giocatore, partita per partita */
 export async function andamentoVoti(userId) {
   const { data, error } = await sb.from('vista_voti_per_partita')
     .select('match_id, data, media_voto, num_voti').eq('votato_id', userId)
@@ -196,7 +232,6 @@ export async function listaProfili() {
   if (error) throw new Error(messaggio(error));
   return data;
 }
-/** Aggiorna un profilo: ognuno il proprio, l'admin chiunque (garantito dall'RLS) */
 export async function aggiornaProfilo(id, patch) {
   const { error } = await sb.from('profiles').update(patch).eq('id', id);
   if (error) throw new Error(messaggio(error));
@@ -229,12 +264,23 @@ export async function nuovaPassword(password) {
 }
 
 // -------------------------------- FOTO -------------------------------------
-/** Carica la foto profilo nel bucket pubblico e restituisce l'URL */
+/**
+ * Carica la foto profilo nel bucket pubblico "foto-profili" e restituisce l'URL.
+ * - Path: {userId}/foto-{timestamp}.{ext} → conforme a policy RLS
+ * - Cache-Control: 0 + querystring anti-cache
+ * - contentType: passthrough del MIME reale del file
+ * - upsert: aggiorna la stessa foto alla stessa posizione
+ */
 export async function caricaFoto(userId, file) {
-  const percorso = `${userId}/foto-${Date.now()}.jpg`;
-  const { error } = await sb.storage.from('foto-profili').upload(percorso, file,
-    { upsert: true, cacheControl: '0' });
-  if (error) throw new Error(messaggio(error));
-  const { data } = sb.storage.from('foto-profili').getPublicUrl(percorso);
-  return `${data.publicUrl}?v=${Date.now()}`; // parametro anti-cache
+  const bucket = 'foto-profili';
+  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const percorso = `${userId}/foto-${Date.now()}.${ext}`;
+  const { error: upErr } = await sb.storage.from(bucket).upload(percorso, file, {
+    upsert: true,
+    cacheControl: '0',
+    contentType: file.type || 'image/jpeg',
+  });
+  if (upErr) throw new Error(messaggio(upErr));
+  const { data } = sb.storage.from(bucket).getPublicUrl(percorso);
+  return `${data.publicUrl}?v=${Date.now()}`;
 }

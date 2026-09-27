@@ -1,6 +1,7 @@
 /* ============================================================================
    STILE — Calcetto tra Amici
    Tema verde campo + accenti arancio. Mobile-first, responsive su desktop.
+   Features multi-team (2-4 colonne), MVP, allenatore, jolly.
    ============================================================================ */
 
 :root {
@@ -186,14 +187,18 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 }
 .tab-btn.attiva { background: var(--verde); color: #fff; }
 
-/* ---------- Squadre ---------- */
+/* ---------- Squadre (flessibili N colonne) ---------- */
 .squadre-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.squadra-col { border-radius: 12px; padding: 10px; }
+.squadra-col { border-radius: 12px; padding: 10px; min-width: 0; }
 .squadra-a { background: #e9f2fc; }
 .squadra-b { background: #f3ebfd; }
+.squadra-c { background: #e7f8ec; }
+.squadra-d { background: #fff1e0; }
 .squadra-nome { font-weight: 900; font-size: 13px; margin-bottom: 6px; }
 .squadra-a .squadra-nome { color: var(--blu); }
 .squadra-b .squadra-nome { color: var(--viola); }
+.squadra-c .squadra-nome { color: var(--verde); }
+.squadra-d .squadra-nome { color: var(--arancio-scuro); }
 
 /* ---------- Calendario mensile ---------- */
 .cal-griglia { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
@@ -232,6 +237,9 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
   border: 1.5px solid transparent;
 }
 .chip.sel { background: var(--verde-chiaro); border-color: var(--verde); color: var(--verde-scuro); }
+
+/* ---------- Foto profilo / MVP card bordi ---------- */
+.card-hero-bordi-verde { border-left: 5px solid var(--verde); }
 
 /* ---------- Desktop ---------- */
 @media (min-width: 700px) {

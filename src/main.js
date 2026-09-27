@@ -2,6 +2,7 @@
 // ROUTER + AVVIO — gestisce navigazione, sessione, menu e notifiche
 // ============================================================================
 import { sb } from './supabase.js';
+import { verificaConfig } from './config.js';
 import { state, caricaProfilo, precaricaProfili, sonoAdmin } from './state.js';
 import { el } from './ui.js';
 import { aggiornaStatoVotazioni } from './api.js';
@@ -27,6 +28,8 @@ document.getElementById('btn-admin').addEventListener('click', () => { location.
 
 /** Mostra/nasconde header e menu in base al login */
 function mostraNav(mostra) {
+  // Prima nascondo MENO se non è ancora stata verificata la config
+  if (!verificaConfig(app)) return;
   header.hidden = !mostra;
   nav.hidden = !mostra;
 }
@@ -65,6 +68,7 @@ export async function aggiornaNotifica() {
 
 /** Instrada l'URL corrente (#/pagina/parametro) alla pagina giusta */
 async function instrada() {
+  if (!verificaConfig(app)) return;
   if (!state.sessione) { mostraNav(false); renderizzaAuth(app); return; }
   mostraNav(true);
   document.getElementById('btn-admin').hidden = !sonoAdmin();
@@ -96,6 +100,7 @@ async function instrada() {
 
 /** Avvio dell'applicazione */
 async function avvia() {
+  if (!verificaConfig(app)) return; // blocca l'app con un messaggio chiaro
   const { data: { session } } = await sb.auth.getSession();
   state.sessione = session;
   if (session) {
