@@ -1,11 +1,6 @@
 // ============================================================================
-// AREA ADMIN — gestione completa: partite, utenti, voti, impostazioni.
-// Include features 1-5: num_squadre flessibili, MVP, jolly, allenatore, voto
-// commenti+chiusura anticipata già attivi lato server.
-//
-// FIX 2026-09-27: corretto errore di sintassi (parentesi in eccesso) nel
-// blocco "N° squadre / Gioc. per squadra" della sezione Dati partita, che
-// bloccava il caricamento dell'intero file (e quindi dell'intera app).
+// AREA ADMIN — gestione completa (partite, utenti, voti, MVP, impostazioni).
+// Include upload foto per un utente qualsiasi (admin flow).
 // ============================================================================
 import { state, profiloPerId } from '../state.js';
 import {
@@ -18,16 +13,18 @@ import {
   promuoviAdmin, setTuttofare, eliminaUtente, eliminaDatiDemo,
   candidatiMVP, setCandidatiMVP,
   getImpostazioni, salvaImpostazioni,
+  caricaFoto,
 } from '../api.js';
 import {
-  el, avatar, nomeProfilo, toast, fmtData, fmtScadenza, oggiISO, selectVoto,
+  el, avatar, nomeProfilo, toast, fmtData, fmtScadenza, oggiISO,
+  selectVoto, ridimensiona, anteprimaImg,
 } from '../ui.js';
 
 export async function renderizzaAdmin(app) {
   app.innerHTML = '';
   app.append(el('h2', { style: 'margin:4px 0 12px;font-size:20px' }, ['⚙️ Area Admin']));
 
-  const schede = [['partite', '📅 Partite'], ['utenti', '👤 Utenti'], ['voti', '⭐ Voti'], ['impostazioni', '🛠️ Impostazioni']];
+  const schede = [['partite','📅 Partite'],['utenti','👤 Utenti'],['voti','⭐ Voti'],['impostazioni','🛠️ Impostazioni']];
   const barra = el('div', { class: 'tab-bar' });
   const contenuto = el('div');
   for (const [chiave, etichetta] of schede) {
@@ -56,6 +53,7 @@ export async function renderizzaAdmin(app) {
 const spinnerAdmin = () => el('div', { class: 'spinner' }, ['⏳ Caricamento…']);
 const conferma = (msg) => window.confirm(msg);
 
+/* ================= PARTITE ================= */
 async function schedaPartite(contenuto) {
   const partite = await listaPartite();
   contenuto.innerHTML = '';
@@ -71,8 +69,7 @@ async function schedaPartite(contenuto) {
     btnNuova.disabled = true;
     try {
       await creaPartita({ data: fData.value, ora: fOra.value, luogo: fLuogo.value.trim(),
-        max_giocatori: Number(fPosti.value),
-        num_squadre: Number(fNumSq.value),
+        max_giocatori: Number(fPosti.value), num_squadre: Number(fNumSq.value),
         giocatori_per_squadra: Number(fGiocSq.value) });
       toast('Partita creata! 📅'); await schedaPartite(contenuto); return;
     } catch (e) { toast(e.message, 'errore'); }
@@ -82,15 +79,15 @@ async function schedaPartite(contenuto) {
     el('div', { class: 'card-titolo' }, ['➕ Nuova partita']),
     el('div', { class: 'form' }, [
       el('div', { class: 'form-riga' }, [
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Data']), fData]),
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Ora']), fOra]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Data']), fData]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Ora']), fOra]),
       ]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Luogo']), fLuogo]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Luogo']), fLuogo]),
       el('div', { class: 'form-riga' }, [
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Posti massimi']), fPosti]),
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['N° squadre (2-4)']), fNumSq]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Posti massimi']), fPosti]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['N° squadre (2-4)']), fNumSq]),
       ]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Giocatori per squadra']), fGiocSq]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Giocatori per squadra']), fGiocSq]),
       btnNuova,
     ]),
   ]));
@@ -104,8 +101,8 @@ async function schedaPartite(contenuto) {
 
 function rigaGestionePartita(p, contenuto) {
   const badge = { programmata: el('span', { class: 'badge' }, ['Programmata']),
-    giocata: el('span', { class: 'badge badge-blu' }, ['Giocata']),
-    annullata: el('span', { class: 'badge badge-rosso' }, ['Annullata']) }[p.stato];
+    giocata:    el('span', { class: 'badge badge-blu' }, ['Giocata']),
+    annullata:  el('span', { class: 'badge badge-rosso' }, ['Annullata']) }[p.stato];
   const dettaglio = el('div', { style: 'display:none' });
   const apri = el('button', { class: 'btn btn-ghost btn-mini' }, ['Gestisci']);
   apri.addEventListener('click', async () => {
@@ -139,7 +136,7 @@ async function riempiGestione(p, box, contenuto) {
   box.innerHTML = '';
   const blocco = el('div', { class: 'admin-blocco' });
 
-  // Dati partita
+  // Dati
   const eData = el('input', { class: 'input', type: 'date', value: p.data });
   const eOra = el('input', { class: 'input', type: 'time', value: p.ora.slice(0, 5) });
   const eLuogo = el('input', { class: 'input', value: p.luogo });
@@ -155,8 +152,8 @@ async function riempiGestione(p, box, contenuto) {
       el('div', { class: 'campo' }, [eLuogo]), el('div', { class: 'campo' }, [ePosti]),
     ]),
     el('div', { class: 'form-riga' }, [
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['N° squadre']), eNumSq]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Gioc/squadra']), eGiocSq]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['N° squadre']), eNumSq)]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gioc/squadra']), eGiocSq)]),
     ]),
     el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
       e.target.disabled = true;
@@ -168,24 +165,23 @@ async function riempiGestione(p, box, contenuto) {
         toast('Partita aggiornata.'); await riempiGestione(p, box, contenuto); return;
       } catch (err) { toast(err.message, 'errore'); }
       e.target.disabled = false;
-    } }, ['Salva dati']),
+    }}, ['Salva dati']),
   ]));
 
-  // Stato partita
+  // Stato
   blocco.append(el('div', { class: 'sezione-titolo' }, ['🚦 Stato']));
   const stati = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' });
   if (p.stato !== 'annullata') stati.append(el('button', { class: 'btn btn-pericolo btn-mini', onclick: async () => {
     if (!conferma('Annullare questa partita?')) return;
     await modificaPartita(p.id, { stato: 'annullata' }); toast('Partita annullata.'); await riempiGestione(p, box, contenuto);
-  } }, ['❌ Annulla partita']));
+  }}, ['❌ Annulla partita']));
   if (p.stato === 'annullata') stati.append(el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
     await modificaPartita(p.id, { stato: 'programmata' }); toast('Partita riattivata.'); await riempiGestione(p, box, contenuto);
-  } }, ['♻️ Riattiva']));
+  }}, ['♻️ Riattiva']));
   stati.append(el('button', { class: 'btn btn-pericolo btn-mini', onclick: async () => {
     if (!conferma('Eliminare DEFINITIVAMENTE la partita e tutti i suoi dati?')) return;
-    await eliminaPartita(p.id); toast('Partita eliminata.');
-    await schedaPartite(contenuto);
-  } }, ['🗑 Elimina']));
+    await eliminaPartita(p.id); toast('Partita eliminata.'); await schedaPartite(contenuto);
+  }}, ['🗑 Elimina']));
   blocco.append(stati);
 
   // Iscritti
@@ -200,11 +196,12 @@ async function riempiGestione(p, box, contenuto) {
     el('button', { class: 'btn btn-pericolo btn-mini', onclick: async () => {
       await rimuoviDaPartita(p.id, g.id); toast('Giocatore rimosso.');
       await riempiGestione(p, box, contenuto);
-    } }, ['Rimuovi']),
+    }}, ['Rimuovi']),
   ])));
   const selettore = el('select', { class: 'input', style: 'min-height:40px' },
     [el('option', { value: '' }, ['— aggiungi giocatore —']),
-     ...attivi.filter(g => !idIscritti.has(g.id)).map(g => el('option', { value: g.id }, [nomeProfilo(g)]))]);
+     ...attivi.filter(g => !idIscritti.has(g.id)).map(g => el('option', { value: g.id },
+      [nomeProfilo(g)]))]);
   blocco.append(el('div', { style: 'display:flex;gap:8px;margin-top:8px' }, [
     selettore,
     el('button', { class: 'btn btn-primary btn-mini', onclick: async () => {
@@ -213,18 +210,19 @@ async function riempiGestione(p, box, contenuto) {
         toast(r === 'lista_attesa' ? 'Iscritto in lista d\'attesa.' : 'Giocatore iscritto.');
         await riempiGestione(p, box, contenuto); return;
       } catch (e) { toast(e.message, 'errore'); }
-    } }, ['Iscrivi']),
+    }}, ['Iscrivi']),
   ]));
 
   // Squadre (formazione)
-  blocco.append(el('div', { class: 'sezione-titolo' },
-    [`🧢 Squadre (tocca: A→B→C→D→fuori). N=${p.num_squadre || 2} · max/g=${p.giocatori_per_squadra || 5}`]));
+  blocco.append(el('div', { class: 'sezione-titolo' }, [
+    `🧢 Squadre (tocca: A→B→C→D→fuori). N=${p.num_squadre || 2} · max/g=${p.giocatori_per_squadra || 5}`]));
   const nSq = Math.max(2, Math.min(4, p.num_squadre || 2));
   const letters = ['A','B','C','D'].slice(0, nSq);
   const colonne = el('div', { class: 'squadre-grid', style: `grid-template-columns:repeat(${nSq},1fr)` });
   for (const lettera of letters) {
     const giocatori = squadre.filter(g => g.squadra === lettera);
-    const colori = { A: ['#e9f2fc','#2273d2'], B: ['#f3ebfd','#7a3fd1'], C: ['#e7f8ec','#0e7a3d'], D: ['#fff1e0','#e05e00'] }[lettera];
+    const colori = { A:['#e9f2fc','#2273d2'], B:['#f3ebfd','#7a3fd1'],
+                     C:['#e7f8ec','#0e7a3d'], D:['#fff1e0','#e05e00'] }[lettera];
     const col = el('div', { style: `background:${colori[0]};border-radius:12px;padding:10px;min-width:0` }, [
       el('div', { style: `font-weight:900;font-size:13px;margin-bottom:6px;color:${colori[1]}` },
         [`SQUADRA ${lettera} (${giocatori.length})`]),
@@ -243,17 +241,16 @@ async function riempiGestione(p, box, contenuto) {
   const chips = el('div', { class: 'elenco-checkbox', style: 'margin-top:8px' });
   if (iscritti.filter(x => !x.in_attesa).length >= 2) {
     for (const g of iscritti.filter(x => !x.in_attesa)) {
-      // un giocatore può essere in più squadre (jolly): mostra tutte le sue presenze
       const sqPresenti = squadre.filter(s => s.id === g.id);
       const labelSq = sqPresenti.length
         ? sqPresenti.map(s => `${s.squadra}${s.ruolo === 'jolly' ? '🎭' : s.ruolo === 'allenatore' ? '👔' : ''}`).join('+')
         : '';
-      const chip = el('span', { class: 'chip' + (sqPresenti.length ? ' sel' : '') }, [`${nomeProfilo(g)} ${labelSq ? '(' + labelSq + ')' : ''}`]);
+      const chip = el('span', { class: 'chip' + (sqPresenti.length ? ' sel' : '') },
+        [`${nomeProfilo(g)} ${labelSq ? '(' + labelSq + ')' : ''}`]);
       chip.addEventListener('click', async () => {
-        // ciclo: nessuna → A → B → C → D → nessuna
         const cur = sqPresenti.length ? sqPresenti[0].squadra : null;
         const idx = cur ? letters.indexOf(cur) : -1;
-        const prossima = idx === -1 ? letters[0] : (idx + 1 <= letters.length - 1 ? letters[idx + 1] : null);
+        const prossima = idx === -1 ? letters[0] : (idx + 1 <= letters.length - 1 ? letters[idx+1] : null);
         await impostaSquadra(p.id, g.id, prossima);
         await riempiGestione(p, box, contenuto);
       });
@@ -263,21 +260,24 @@ async function riempiGestione(p, box, contenuto) {
   blocco.append(chips);
   blocco.append(el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' }, [
     el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
-      try { const n = await generaSquadreBilate(p.id); toast(`Squadre bilanciate (${n} giocatori).`);
+      try {
+        const n = await generaSquadreBilate(p.id);
+        toast(`Squadre bilanciate (${n} giocatori).`);
         await riempiGestione(p, box, contenuto); return;
       } catch (e) { toast(e.message, 'errore'); }
-    } }, ['⚖️ Genera squadre bilanciate']),
+    }}, ['⚖️ Genera squadre bilanciate']),
   ]));
 
-  // JOLLY — scegli un giocatore e assegna a più squadre
+  // Jolly
   blocco.append(el('div', { class: 'sezione-titolo' }, ['🎭 Jolly (assegna a più squadre)']));
-  const selJolly = el('select', { class: 'input', style: 'min-height:40px;max-width:200px' },
+  const selJolly = el('select', { class: 'input', style: 'min-height:40px,max-width:200px' },
     [el('option', { value: '' }, ['— scegli giocatore —']),
      ...iscritti.filter(x => !x.in_attesa).map(g => el('option', { value: g.id }, [nomeProfilo(g)]))]);
   const cbA = el('input', { type: 'checkbox' }), cbB = el('input', { type: 'checkbox' }),
         cbC = el('input', { type: 'checkbox' }), cbD = el('input', { type: 'checkbox' });
   const cbBox = el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:6px' },
-    ['A','B','C','D'].slice(0, nSq).map((l, i) => el('label', { style: 'display:flex;gap:4px;align-items:center;font-weight:600' },
+    ['A','B','C','D'].slice(0, nSq).map((l, i) => el('label',
+      { style: 'display:flex;gap:4px;align-items:center;font-weight:600' },
       [[cbA, cbB, cbC, cbD][i], ' ' + l])));
   blocco.append(el('div', { class: 'form-riga', style: 'flex-direction:column' }, [
     selJolly, cbBox,
@@ -289,7 +289,7 @@ async function riempiGestione(p, box, contenuto) {
         const squadreJolly = [cbA, cbB, cbC, cbD].slice(0, nSq)
           .map((cb, i) => cb.checked ? ['A','B','C','D'][i] : null).filter(Boolean);
         if (!squadreJolly.length) {
-          await segnaJolly(p.id, id, null); // rimuovi
+          await segnaJolly(p.id, id, null);
           toast('Jolly rimosso.');
         } else {
           await segnaJolly(p.id, id, squadreJolly);
@@ -298,10 +298,10 @@ async function riempiGestione(p, box, contenuto) {
         await riempiGestione(p, box, contenuto); return;
       } catch (err) { toast(err.message, 'errore'); }
       e.target.disabled = false;
-    } }, ['💾 Imposta jolly']),
+    }}, ['💾 Imposta jolly']),
   ]));
 
-  // ALLENATORE per squadra
+  // Allenatore
   blocco.append(el('div', { class: 'sezione-titolo' }, ['👔 Allenatore per squadra']));
   for (const lettera of letters) {
     const selAll = el('select', { class: 'input', style: 'min-height:40px' },
@@ -313,7 +313,6 @@ async function riempiGestione(p, box, contenuto) {
       el('button', { class: 'btn btn-primary btn-mini', onclick: async () => {
         const v = selAll.value;
         if (!v) {
-          // nessuno selezionato: nessuna azione
           await impostaAllenatore(p.id, selAll.options[selAll.selectedIndex]?.dataset?.id || '00000000-0000-0000-0000-000000000000', null);
           toast(`Allenatore Sq ${lettera} rimosso (se presente).`);
         } else {
@@ -322,7 +321,7 @@ async function riempiGestione(p, box, contenuto) {
           toast(`Allenatore Sq ${lettera} impostato.`);
         }
         await riempiGestione(p, box, contenuto);
-      } }, ['Salva']),
+      }}, ['Salva']),
     ]));
   }
 
@@ -350,7 +349,6 @@ async function riempiGestione(p, box, contenuto) {
       candidatiBox.append(chip);
     }
   }
-  renderCandidati();
   blocco.append(candidatiBox);
   blocco.append(el('div', { class: 'riga-sub', style: 'margin-top:6px' },
     ['Solo i profili marcati "tuttofare" possono poi scegliere uno di questi come MVP.']));
@@ -360,8 +358,8 @@ async function riempiGestione(p, box, contenuto) {
   const gA = el('input', { class: 'input', type: 'number', min: 0, max: 99, value: p.gol_squadra_a ?? 0, style: 'min-height:40px' });
   const gB = el('input', { class: 'input', type: 'number', min: 0, max: 99, value: p.gol_squadra_b ?? 0, style: 'min-height:40px' });
   blocco.append(el('div', { class: 'form-riga' }, [
-    el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Gol Squadra A']), gA]),
-    el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Gol Squadra B']), gB]),
+    el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gol Squadra A']), gA]),
+    el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gol Squadra B']), gB]),
   ]));
   const schierati = squadre.length ? squadre : iscritti.filter(g => !g.in_attesa);
   const inputGol = new Map(); const inputAuto = new Map();
@@ -393,9 +391,9 @@ async function riempiGestione(p, box, contenuto) {
       await riempiGestione(p, box, contenuto); return;
     } catch (err) { toast(err.message, 'errore'); }
     e.target.disabled = false;
-  } }, ['💾 Salva risultato e APRI votazione']));
+  }}, ['💾 Salva risultato e APRI votazione']));
 
-  // Gestione votazione
+  // Votazione
   blocco.append(el('div', { class: 'sezione-titolo' }, ['⭐ Votazione']));
   if (p.stato === 'giocata') {
     blocco.append(el('div', { class: 'riga-sub' }, [
@@ -403,15 +401,15 @@ async function riempiGestione(p, box, contenuto) {
     ]));
     const azioni = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:6px' });
     for (const [azione, etichetta, cls] of [
-      ['apri', '🔓 Apri', 'btn-ghost'],
-      ['chiudi', '🔒 Chiudi ora', 'btn-pericolo'],   // <— FEATURE 1: chiusura anticipata
-      ['riapri', '↻ Riapri', 'btn-ghost']]) {
+      ['apri',   '🔓 Apri',         'btn-ghost'],
+      ['chiudi', '🔒 Chiudi ora',   'btn-pericolo'],
+      ['riapri', '↻ Riapri',        'btn-ghost']]) {
       azioni.append(el('button', { class: `btn ${cls} btn-mini`, onclick: async () => {
         if (azione === 'chiudi' && !conferma('Chiudere la votazione ADESSO?')) return;
         try { await gestisciVotazione(p.id, azione); toast('Votazione aggiornata.');
           await riempiGestione(p, box, contenuto); return;
         } catch (e) { toast(e.message, 'errore'); }
-      } }, [etichetta]));
+      }}, [etichetta]));
     }
     blocco.append(azioni);
   } else {
@@ -422,7 +420,7 @@ async function riempiGestione(p, box, contenuto) {
   box.append(blocco);
 }
 
-// ---------- SCHEDA UTENTI ----------
+/* ================= UTENTI ================= */
 async function schedaUtenti(contenuto) {
   const profili = await listaProfili();
   contenuto.innerHTML = '';
@@ -455,70 +453,121 @@ function rigaUtente(g, onAggiorna) {
   const fSopr = el('input', { class: 'input', value: g.soprannome, style: 'min-height:40px' });
   const fEmail = el('input', { class: 'input', type: 'email', value: g.email, style: 'min-height:40px' });
   const fRuolo = el('select', { class: 'input', style: 'min-height:40px' },
-    [['', '—'], ['portiere', 'Portiere'], ['difensore', 'Difensore'],
-     ['centrocampista', 'Centrocampista'], ['attaccante', 'Attaccante']]
+    [['','—'],['portiere','Portiere'],['difensore','Difensore'],
+     ['centrocampista','Centrocampista'],['attaccante','Attaccante']]
     .map(([v, t]) => el('option', { value: v, ...(g.ruolo_preferito === v ? { selected: '' } : {}) }, [t])));
   const fPiede = el('select', { class: 'input', style: 'min-height:40px' },
-    [['', '—'], ['destro', 'Destro'], ['sinistro', 'Sinistro'], ['ambidestro', 'Ambidestro']]
+    [['','—'],['destro','Destro'],['sinistro','Sinistro'],['ambidestro','Ambidestro']]
     .map(([v, t]) => el('option', { value: v, ...(g.piede_preferito === v ? { selected: '' } : {}) }, [t])));
-  const fFoto = el('input', { class: 'input', value: g.foto_url || '', placeholder: 'URL foto', style: 'min-height:40px' });
+  const fFotoUrl = el('input', { class: 'input', value: g.foto_url || '',
+    placeholder: 'URL foto (se non usi file picker)', style: 'min-height:40px' });
+
+  // Anteprima + file picker per foto al posto d'altri (admin flow)
+  const fotoBox = el('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' });
+  const avatarAttuale = el('img', { src: g.foto_url || '', class: 'anteprima-foto', alt: 'foto attuale',
+    style: 'width:72px;height:72px;border-radius:10px;object-fit:cover;background:#fff;border:2px solid var(--bordo)' });
+  fotoBox.append(avatarAttuale, el('span', { class: 'riga-sub' }, ['👆 attuale']));
+  const inputFotoAdmin = el('input', { class: 'input', type: 'file',
+    accept: 'image/jpeg,image/png,image/webp', style: 'width:220px;padding:6px' });
+  inputFotoAdmin.addEventListener('change', () => {
+    for (const n of fotoBox.querySelectorAll('.anteprima-admin-nuova')) n.remove();
+    for (const n of fotoBox.querySelectorAllAll?.('.anteprima-admin-nuova') || []) n.remove();
+    fotoBox.querySelectorAll('.anteprima-admin-nuova').forEach(n => n.remove());
+    if (inputFotoAdmin.files[0]) {
+      const a = anteprimaImg(inputFotoAdmin.files[0], 72);
+      a.classList.add('anteprima-admin-nuova');
+      a.style.borderColor = 'var(--arancio)';
+      fotoBox.append(a, el('span', { class: 'riga-sub' }, ['👆 nuova']));
+    }
+  });
+  const btnCaricaFotoAdmin = el('button', { class: 'btn btn-arancio btn-mini' },
+    ['📷 Carica foto al posto suo']);
+  btnCaricaFotoAdmin.addEventListener('click', async (ev) => {
+    if (!inputFotoAdmin.files[0]) {
+      toast('Seleziona prima un file.', 'errore'); return;
+    }
+    ev.target.disabled = true;
+    try {
+      const blobRidim = await ridimensiona(inputFotoAdmin.files[0], 600, 0.85);
+      const url = await caricaFoto(g.id, blobRidim);
+      await aggiornaProfilo(g.id, { foto_url: url });
+      toast('Foto aggiornata per ' + nomeProfilo(g) + ' ✅');
+      g.foto_url = url;
+      inputFotoAdmin.value = '';
+      fFotoUrl.value = url;
+      for (const n of fotoBox.querySelectorAll('.anteprima-admin-nuova')) n.remove();
+      avatarAttuale.src = url;
+    } catch (e) {
+      console.error('[admin upload foto]', e);
+      toast('Errore: ' + e.message, 'errore');
+    }
+    ev.target.disabled = false;
+  });
 
   dettaglio.append(el('div', { class: 'admin-blocco' }, [
     el('div', { class: 'form' }, [
       el('div', { class: 'form-riga' }, [
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Nome']), fNome]),
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Cognome']), fCognome]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Nome']), fNome]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Cognome']), fCognome]),
       ]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Soprannome']), fSopr]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Email']), fEmail]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Soprannome']), fSopr]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Email']), fEmail]),
       el('div', { class: 'form-riga' }, [
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Ruolo']), fRuolo]),
-        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Piede']), fPiede]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Ruolo']), fRuolo]),
+        el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Piede']), fPiede]),
       ]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Foto (URL)']), fFoto]),
+      el('div', { class: 'campo' }, [
+        el('label',{class:'campo-label'},['📷 Foto (URL o carica file)']),
+        fFotoUrl, inputFotoAdmin, fotoBox,
+        btnCaricaFotoAdmin,
+      ]),
       el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
         e.target.disabled = true;
         try {
           const patch = { nome: fNome.value.trim(), cognome: fCognome.value.trim(),
             soprannome: fSopr.value.trim(), ruolo_preferito: fRuolo.value || null,
-            piede_preferito: fPiede.value || null, foto_url: fFoto.value.trim() || null };
+            piede_preferito: fPiede.value || null, foto_url: fFotoUrl.value.trim() || null };
           await aggiornaProfilo(g.id, patch);
           if (fEmail.value.trim() !== g.email) await cambiaEmail(g.id, fEmail.value.trim());
           toast('Utente aggiornato.'); Object.assign(g, patch, { email: fEmail.value.trim() });
           e.target.textContent = '✓ Salvato';
         } catch (err) { toast(err.message, 'errore'); }
         e.target.disabled = false;
-      } }, ['Salva']),
+      }}, ['Salva']),
       el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, [
         el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
           await impostaAttivo(g.id, !g.attivo); toast(g.attivo ? 'Utente disattivato.' : 'Utente riattivato.');
           g.attivo = !g.attivo;
-        } }, [g.attivo ? '🚫 Disattiva' : '✅ Riattiva']),
+        }}, [g.attivo ? '🚫 Disattiva' : '✅ Riattiva']),
         el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
           const nuova = prompt(`Nuova password per ${nomeProfilo(g)} (min 6 caratteri):`);
           if (!nuova) return;
           try { await resetPassword(g.id, nuova); toast('Password reimpostata.'); }
           catch (err) { toast(err.message, 'errore'); }
-        } }, ['🔑 Reset password']),
+        }}, ['🔑 Reset password']),
         el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
           try { await promuoviAdmin(g.id, !g.is_admin);
             toast(g.is_admin ? 'Permessi admin rimossi.' : 'Ora è admin!');
             g.is_admin = !g.is_admin;
           } catch (err) { toast(err.message, 'errore'); }
-        } }, [g.is_admin ? '⬇️ Togli admin' : '⬆️ Promuovi admin']),
-        el('button', { style: `background:${g.is_tuttofare ? '#0e7a3d;color:#fff' : ''};border:none;border-radius:9px;padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer;min-height:32px`, onclick: async () => {
-          try {
-            await setTuttofare(g.id, !g.is_tuttofare);
-            toast(g.is_tuttofare ? '"Tuttofare" rimosso.' : 'Ora è "tuttofare"! 🌟');
-            g.is_tuttofare = !g.is_tuttofare;
-          } catch (err) { toast(err.message, 'errore'); }
-        } }, [g.is_tuttofare ? '🌟 Tuttofare ✓' : '🌟 Rendi tuttofare']),
+        }}, [g.is_admin ? '⬇️ Togli admin' : '⬆️ Promuovi admin']),
+        el('button', {
+          style: `background:${g.is_tuttofare ? '#0e7a3d;color:#fff' : ''};border:none;border-radius:9px;
+                  padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer;min-height:32px`,
+          onclick: async () => {
+            try {
+              await setTuttofare(g.id, !g.is_tuttofare);
+              toast(g.is_tuttofare ? '"Tuttofare" rimosso.' : 'Ora è "tuttofare"! 🌟');
+              g.is_tuttofare = !g.is_tuttofare;
+            } catch (err) { toast(err.message, 'errore'); }
+          }
+        }, [g.is_tuttofare ? '🌟 Tuttofare ✓' : '🌟 Rendi tuttofare']),
         el('button', { class: 'btn btn-pericolo btn-mini', onclick: async () => {
           if (!conferma(`Eliminare DEFINITIVAMENTE ${nomeProfilo(g)} e tutti i suoi dati?`)) return;
           try { await eliminaUtente(g.id); toast('Utente eliminato.');
             if (onAggiorna) onAggiorna();
           } catch (err) { toast(err.message, 'errore'); }
-        } }, ['🗑 Elimina']),
+        }}, ['🗑 Elimina']),
       ]),
     ]),
   ]));
@@ -539,14 +588,12 @@ function rigaUtente(g, onAggiorna) {
   ]);
 }
 
-// ---------- SCHEDA VOTI ----------
+/* ================= VOTI ================= */
 async function schedaVoti(contenuto) {
-  const [partite] = await Promise.all([listaPartite()]);
+  const partite = await listaPartite();
   const giocate = partite.filter(p => p.stato === 'giocata').sort((a, b) => b.data.localeCompare(a.data));
   contenuto.innerHTML = '';
-
   if (!giocate.length) { contenuto.append(el('div', { class: 'card vuoto' }, ['Nessuna partita giocata'])); return; }
-
   const selettore = el('select', { class: 'input', style: 'margin-bottom:12px' },
     giocate.map(p => el('option', { value: p.id }, [fmtData(p.data) + ` (${p.gol_squadra_a}–${p.gol_squadra_b})`])));
   const box = el('div');
@@ -593,7 +640,7 @@ async function schedaVoti(contenuto) {
             if (!conferma('Eliminare questo voto?')) return;
             try { await eliminaVoto(v.id); toast('Voto eliminato.'); await disegna(); return; }
             catch (e) { toast(e.message, 'errore'); }
-          } }, ['🗑']),
+          }}, ['🗑']),
         ]),
       ]),
     ]);
@@ -603,7 +650,7 @@ async function schedaVoti(contenuto) {
   await disegna();
 }
 
-// ---------- SCHEDA IMPOSTAZIONI ----------
+/* ================= IMPOSTAZIONI ================= */
 async function schedaImpostazioni(contenuto) {
   const imp = await getImpostazioni();
   contenuto.innerHTML = '';
@@ -623,9 +670,9 @@ async function schedaImpostazioni(contenuto) {
   contenuto.append(el('div', { class: 'card' }, [
     el('div', { class: 'card-titolo' }, ['🛠️ Impostazioni generali']),
     el('div', { class: 'form' }, [
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Ore di apertura votazioni']), fOre]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Partite minime per la classifica']), fMin]),
-      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Posti predefiniti per partita']), fPosti]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Ore di apertura votazioni']), fOre]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Partite minime per la classifica']), fMin]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Posti predefiniti per partita']), fPosti]),
       btn,
     ]),
   ]));
@@ -636,7 +683,7 @@ async function schedaImpostazioni(contenuto) {
     el('button', { class: 'btn btn-pericolo btn-blocco', style: 'margin-top:10px', onclick: async () => {
       if (!conferma('Eliminare TUTTE le partite demo e i profili demo?')) return;
       try { await eliminaDatiDemo(); toast('Dati demo eliminati. ✅'); }
-      catch (e) { toast(e.message, 'errore'); }
-    } }, ['🗑 Elimina tutti i dati demo']),
+      catch (e) { toast(err.message, 'errore'); }
+    }}, ['🗑 Elimina tutti i dati demo']),
   ]));
 }
