@@ -153,7 +153,7 @@ async function riempiGestione(p, box, contenuto) {
     ]),
     el('div', { class: 'form-riga' }, [
       el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['N° squadre']), eNumSq]),
-      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gioc/squadra']), eGiocSq)]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gioc/squadra']), eGiocSq])]),
     ]),
     el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
       e.target.disabled = true;
