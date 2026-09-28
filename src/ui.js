@@ -98,3 +98,49 @@ export function fmtScadenza(ts) {
   const d = new Date(ts);
   return d.toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
+
+// ============================================================================
+// RIDIMENSIONA immagine via canvas → JPEG (qualità 0.85) max 600×600.
+// Risolve due problemi:
+//   1) foto troppo pesanti (alcune sono 5-10 MB) → upload più rapido
+//   2) PNG/WEBP con alpha channel → convertiti a JPEG uniforme
+// Fallback: se canvas fallisce, restituisce il file originale.
+// ============================================================================
+export async function ridimensiona(fileOrBlob, latoMax = 600, qualita = 0.85) {
+  if (!fileOrBlob) throw new Error('file mancante');
+  // se l'immagine è già piccola e già JPEG, lasciala passare (ottimizzazione)
+  try {
+    const bitmap = await createImageBitmap(fileOrBlob);
+    const w0 = bitmap.width, h0 = bitmap.height;
+    const rapporto = Math.min(1, latoMax / Math.max(w0, h0));
+    const w = Math.round(w0 * rapporto), h = Math.round(h0 * rapporto);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    // sfondo bianco per evitare JPEG con bordi neri (da PNG con alpha)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas.toBlob vuoto')), 'image/jpeg', qualita);
+    });
+    const sizeKb = Math.round(blob.size / 1024);
+    console.log(`[ridimensiona] ${w0}×${h0} → ${w}×${h} (${sizeKb} KB)`);
+    return new File([blob], (fileOrBlob.name || 'foto') + '.jpg', { type: 'image/jpeg' });
+  } catch (err) {
+    console.warn('[ridimensiona] canvas fallito, passo il file originale:', err);
+    if (fileOrBlob instanceof Blob && fileOrBlob.type) return fileOrBlob;
+    throw err;
+  }
+}
+
+/** Anteprima locale di un file immagine da URL.createObjectURL */
+export function anteprimaImg(file, size = 90) {
+  if (!file) return null;
+  const url = URL.createObjectURL(file);
+  return el('img', { src: url, alt: 'anteprima', class: 'anteprima-foto',
+    style: `width:${size}px;height:${size}px;object-fit:cover;border-radius:10px;
+            border:2px solid var(--verde);margin-top:6px;background:#fff`,
+    onload: () => setTimeout(() => URL.revokeObjectURL(url), 30000) });
+}
