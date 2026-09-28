@@ -153,7 +153,7 @@ async function riempiGestione(p, box, contenuto) {
     ]),
     el('div', { class: 'form-riga' }, [
       el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['N° squadre']), eNumSq]),
-      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gioc/squadra']), eGiocSq])]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gioc/squadra']), eGiocSq]),
     ]),
     el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
       e.target.disabled = true;
@@ -270,7 +270,7 @@ async function riempiGestione(p, box, contenuto) {
 
   // Jolly
   blocco.append(el('div', { class: 'sezione-titolo' }, ['🎭 Jolly (assegna a più squadre)']));
-  const selJolly = el('select', { class: 'input', style: 'min-height:40px,max-width:200px' },
+  const selJolly = el('select', { class: 'input', style: 'min-height:40px;max-width:200px' },
     [el('option', { value: '' }, ['— scegli giocatore —']),
      ...iscritti.filter(x => !x.in_attesa).map(g => el('option', { value: g.id }, [nomeProfilo(g)]))]);
   const cbA = el('input', { type: 'checkbox' }), cbB = el('input', { type: 'checkbox' }),
@@ -311,16 +311,18 @@ async function riempiGestione(p, box, contenuto) {
       el('div', { class: 'campo', style: 'min-width:60px;font-weight:900' }, [`Sq ${lettera}`]),
       selAll,
       el('button', { class: 'btn btn-primary btn-mini', onclick: async () => {
-        const v = selAll.value;
-        if (!v) {
-          await impostaAllenatore(p.id, selAll.options[selAll.selectedIndex]?.dataset?.id || '00000000-0000-0000-0000-000000000000', null);
-          toast(`Allenatore Sq ${lettera} rimosso (se presente).`);
-        } else {
-          const [gid] = v.split('|');
-          await impostaAllenatore(p.id, gid, lettera);
-          toast(`Allenatore Sq ${lettera} impostato.`);
-        }
-        await riempiGestione(p, box, contenuto);
+        try {
+          const v = selAll.value;
+          if (!v) {
+            await impostaAllenatore(p.id, selAll.options[selAll.selectedIndex]?.dataset?.id || '00000000-0000-0000-0000-000000000000', null);
+            toast(`Allenatore Sq ${lettera} rimosso (se presente).`);
+          } else {
+            const [gid] = v.split('|');
+            await impostaAllenatore(p.id, gid, lettera);
+            toast(`Allenatore Sq ${lettera} impostato.`);
+          }
+          await riempiGestione(p, box, contenuto);
+        } catch (err) { toast(err.message, 'errore'); }
       }}, ['Salva']),
     ]));
   }
@@ -340,15 +342,18 @@ async function riempiGestione(p, box, contenuto) {
         nomeProfilo(g) + (isCand ? ' ✓' : ''),
       ]);
       chip.addEventListener('click', async () => {
-        const nuovi = isCand
-          ? candidatiMVPList.filter(c => c.id !== g.id).map(c => c.id)
-          : [...candidatiMVPList.map(c => c.id), g.id];
-        await setCandidatiMVP(p.id, nuovi);
-        await riempiGestione(p, box, contenuto);
+        try {
+          const nuovi = isCand
+            ? candidatiMVPList.filter(c => c.id !== g.id).map(c => c.id)
+            : [...candidatiMVPList.map(c => c.id), g.id];
+          await setCandidatiMVP(p.id, nuovi);
+          await riempiGestione(p, box, contenuto);
+        } catch (err) { toast(err.message, 'errore'); }
       });
       candidatiBox.append(chip);
     }
   }
+  renderCandidati(); // FIX: senza questa chiamata i candidati non comparivano mai
   blocco.append(candidatiBox);
   blocco.append(el('div', { class: 'riga-sub', style: 'margin-top:6px' },
     ['Solo i profili marcati "tuttofare" possono poi scegliere uno di questi come MVP.']));
@@ -470,14 +475,12 @@ function rigaUtente(g, onAggiorna) {
   const inputFotoAdmin = el('input', { class: 'input', type: 'file',
     accept: 'image/jpeg,image/png,image/webp', style: 'width:220px;padding:6px' });
   inputFotoAdmin.addEventListener('change', () => {
-    for (const n of fotoBox.querySelectorAll('.anteprima-admin-nuova')) n.remove();
-    for (const n of fotoBox.querySelectorAllAll?.('.anteprima-admin-nuova') || []) n.remove();
     fotoBox.querySelectorAll('.anteprima-admin-nuova').forEach(n => n.remove());
     if (inputFotoAdmin.files[0]) {
       const a = anteprimaImg(inputFotoAdmin.files[0], 72);
       a.classList.add('anteprima-admin-nuova');
       a.style.borderColor = 'var(--arancio)';
-      fotoBox.append(a, el('span', { class: 'riga-sub' }, ['👆 nuova']));
+      fotoBox.append(a, el('span', { class: 'riga-sub anteprima-admin-nuova' }, ['👆 nuova']));
     }
   });
   const btnCaricaFotoAdmin = el('button', { class: 'btn btn-arancio btn-mini' },
@@ -495,7 +498,7 @@ function rigaUtente(g, onAggiorna) {
       g.foto_url = url;
       inputFotoAdmin.value = '';
       fFotoUrl.value = url;
-      for (const n of fotoBox.querySelectorAll('.anteprima-admin-nuova')) n.remove();
+      fotoBox.querySelectorAll('.anteprima-admin-nuova').forEach(n => n.remove());
       avatarAttuale.src = url;
     } catch (e) {
       console.error('[admin upload foto]', e);
@@ -552,8 +555,7 @@ function rigaUtente(g, onAggiorna) {
           } catch (err) { toast(err.message, 'errore'); }
         }}, [g.is_admin ? '⬇️ Togli admin' : '⬆️ Promuovi admin']),
         el('button', {
-          style: `background:${g.is_tuttofare ? '#0e7a3d;color:#fff' : ''};border:none;border-radius:9px;
-                  padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer;min-height:32px`,
+          style: `background:${g.is_tuttofare ? '#0e7a3d;color:#fff' : ''};border:none;border-radius:9px;padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer;min-height:32px`,
           onclick: async () => {
             try {
               await setTuttofare(g.id, !g.is_tuttofare);
@@ -612,7 +614,7 @@ async function schedaVoti(contenuto) {
 
   function rigaVotoAdmin(v) {
     const input = selectVoto(v.voto);
-    const commento = el('input', { class: 'input', value: v.commento, placeholder: 'Commento', style: 'min-height:36px;font-size:13px' });
+    const commento = el('input', { class: 'input', value: v.commento || '', placeholder: 'Commento', style: 'min-height:36px;font-size:13px' });
     const btnSalva = el('button', { class: 'btn btn-primary btn-mini' }, ['Salva']);
     btnSalva.addEventListener('click', async () => {
       if (!input.value) { toast('Scegli un voto', 'errore'); return; }
@@ -683,7 +685,7 @@ async function schedaImpostazioni(contenuto) {
     el('button', { class: 'btn btn-pericolo btn-blocco', style: 'margin-top:10px', onclick: async () => {
       if (!conferma('Eliminare TUTTE le partite demo e i profili demo?')) return;
       try { await eliminaDatiDemo(); toast('Dati demo eliminati. ✅'); }
-      catch (e) { toast(err.message, 'errore'); }
+      catch (e) { toast(e.message, 'errore'); }
     }}, ['🗑 Elimina tutti i dati demo']),
   ]));
 }
