@@ -152,7 +152,7 @@ async function riempiGestione(p, box, contenuto) {
       el('div', { class: 'campo' }, [eLuogo]), el('div', { class: 'campo' }, [ePosti]),
     ]),
     el('div', { class: 'form-riga' }, [
-      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['N° squadre']), eNumSq)]),
+      el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['N° squadre']), eNumSq]),
       el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gioc/squadra']), eGiocSq)]),
     ]),
     el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
