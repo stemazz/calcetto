@@ -6,7 +6,7 @@
 //   • voto all'allenatore: chiunque (partecipante)
 //   • jolly visibile come "in più squadre"
 // ============================================================================
-import { state } from '../state.js';
+import { state, caricaProfilo } from '../state.js';
 import {
   singolaPartita, squadrePartita, mieiVoti, salvaVoto,
   salvaMVP, mioMVPScelto, candidatiMVP, gestisciVotazione,
@@ -55,7 +55,13 @@ export async function renderizzaVoti(app, matchId) {
 async function schedaVotazione(app, matchId) {
   app.append(spinner());
   const userId = state.sessione.user.id;
-  const profilo = state.profilo || {};
+  // FIX: il profilo va ricaricato FRESCO a ogni apertura della pagina voto.
+  // state.profilo viene popolato una sola volta al login: se nel frattempo
+  // l'admin ha cambiato il flag "tuttofare" (o altri dati) dell'utente,
+  // senza questo refresh il client continuerebbe a usare i permessi vecchi,
+  // mostrando (o nascondendo) cose che il server — che controlla sempre i
+  // dati aggiornati — poi accetta o rifiuta in modo diverso.
+  const profilo = await caricaProfilo() || {};
   const [p, squadre, mieiV, candidati, mvpMio] = await Promise.all([
     singolaPartita(matchId), squadrePartita(matchId),
     mieiVoti(matchId, userId), candidatiMVP(matchId),
@@ -64,9 +70,14 @@ async function schedaVotazione(app, matchId) {
   app.innerHTML = '';
   app.append(el('a', { href: '#/voti', class: 'riga-sub', style: 'display:block;margin-bottom:8px;text-decoration:none' }, ['← Tutte le votazioni']));
 
-  // FIX: un tuttofare o un allenatore devono poter votare (e assegnare l'MVP)
-  // anche se non compaiono tra i giocatori schierati di nessuna squadra.
-  const mieSquadre = squadre.filter(g => g.id === userId && g.ruolo !== 'allenatore').map(s => s.squadra);
+  // FIX: confronto squadre case-insensitive, come fa già la funzione SQL
+  // salva_voto() (upper(mia_sq) = upper(sq_votato)). Se sul client il
+  // confronto restava case-sensitive, una sola squadra salvata con lettera
+  // minuscola bastava a far sparire il filtro: il client mostrava tutti
+  // come votabili, il server (corretto) rifiutava comunque al salvataggio.
+  const norm = (s) => (s || '').toUpperCase();
+  const mieSquadre = squadre.filter(g => g.id === userId && g.ruolo !== 'allenatore')
+    .map(s => norm(s.squadra));
   const sonoAllenatore = squadre.some(g => g.id === userId && g.ruolo === 'allenatore');
   const sonoTuttofare = !!profilo.is_tuttofare;
   if (!mieSquadre.length && !sonoAllenatore && !sonoTuttofare) {
@@ -103,7 +114,7 @@ async function schedaVotazione(app, matchId) {
   const votabiliGiocatori = squadre.filter(g => {
     if (g.id === userId || g.ruolo === 'allenatore') return false;
     if (vistiGiocatori.has(g.id)) return false; // evita duplicati per i "jolly" in più squadre
-    const votabile = sonoAllenatore || sonoTuttofare || !mieSquadre.includes(g.squadra);
+    const votabile = sonoAllenatore || sonoTuttofare || !mieSquadre.includes(norm(g.squadra));
     if (votabile) vistiGiocatori.add(g.id);
     return votabile;
   });
