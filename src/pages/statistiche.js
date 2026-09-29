@@ -42,9 +42,10 @@ export async function renderizzaStatistiche(app, profiloId) {
     for (const s of squadre.filter(x => idPartite.has(x.match_id))) {
       const p = partiteAnno.find(x => x.id === s.match_id);
       const a = tocca(s.giocatore_id);
+      const sq = (s.squadra || '').toUpperCase();
       a.presenze++;
       if (p.gol_squadra_a === p.gol_squadra_b) a.pareggi++;
-      else if ((s.squadra === 'A') === (p.gol_squadra_a > p.gol_squadra_b)) a.vittorie++;
+      else if ((sq === 'A' || sq === 'C') === (p.gol_squadra_a > p.gol_squadra_b)) a.vittorie++;
       else a.sconfitte++;
     }
     for (const g of gol.filter(x => !x.autogol && idPartite.has(x.match_id))) tocca(g.giocatore_id).gol++;
