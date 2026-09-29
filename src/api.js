@@ -85,15 +85,30 @@ export async function mieIscrizioni(userId) {
 export async function squadrePartita(matchId) {
   const [{ data: sq }, { data: mr }] = await Promise.all([
     sb.from('squadre').select('giocatore_id, squadra, profilo:profiles(*)').eq('match_id', matchId),
-    sb.from('match_ruoli').select('giocatore_id, squadra, ruolo_partita').eq('match_id', matchId),
+    sb.from('match_ruoli').select('giocatore_id, squadra, ruolo_partita, profilo:profiles(*)').eq('match_id', matchId),
   ]);
   const ruoloMappa = new Map();
   for (const r of mr || []) ruoloMappa.set(`${r.giocatore_id}|${r.squadra}`, r.ruolo_partita);
-  return (sq || []).map(r => ({
+
+  const risultato = (sq || []).map(r => ({
     ...r.profilo, id: r.profilo.id,
     squadra: r.squadra,
     ruolo: ruoloMappa.get(`${r.giocatore_id}|${r.squadra}`) || 'giocatore',
   }));
+
+  // FIX: gli allenatori vengono assegnati SOLO in match_ruoli (mai schierati
+  // come giocatori in "squadre"), quindi senza questo passaggio non
+  // comparivano né nella formazione né tra i votabili/votanti — sembravano
+  // "non salvati" anche se in realtà il salvataggio era andato a buon fine.
+  const giaPresenti = new Set(risultato.map(r => `${r.id}|${r.squadra}`));
+  for (const r of mr || []) {
+    if (r.ruolo_partita !== 'allenatore') continue;
+    const chiave = `${r.giocatore_id}|${r.squadra}`;
+    if (giaPresenti.has(chiave)) continue;
+    risultato.push({ ...r.profilo, id: r.profilo.id, squadra: r.squadra, ruolo: 'allenatore' });
+    giaPresenti.add(chiave);
+  }
+  return risultato;
 }
 export const generaSquadreBilate = (matchId) => rpc('genera_squadre_bilate', { p_match: matchId });
 export const impostaSquadra = (matchId, userId, sq) =>
