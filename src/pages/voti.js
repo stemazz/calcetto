@@ -64,10 +64,14 @@ async function schedaVotazione(app, matchId) {
   app.innerHTML = '';
   app.append(el('a', { href: '#/voti', class: 'riga-sub', style: 'display:block;margin-bottom:8px;text-decoration:none' }, ['← Tutte le votazioni']));
 
-  const mieSquadre = squadre.filter(g => g.id === userId).map(s => s.squadra);
-  if (!mieSquadre.length) {
+  // FIX: un tuttofare o un allenatore devono poter votare (e assegnare l'MVP)
+  // anche se non compaiono tra i giocatori schierati di nessuna squadra.
+  const mieSquadre = squadre.filter(g => g.id === userId && g.ruolo !== 'allenatore').map(s => s.squadra);
+  const sonoAllenatore = squadre.some(g => g.id === userId && g.ruolo === 'allenatore');
+  const sonoTuttofare = !!profilo.is_tuttofare;
+  if (!mieSquadre.length && !sonoAllenatore && !sonoTuttofare) {
     app.append(el('div', { class: 'card vuoto' },
-      ['🚫 Non hai partecipato a questa partita (non sei schierato): non puoi votare.']));
+      ['🚫 Non hai partecipato a questa partita (non sei schierato, allenatore o "tuttofare"): non puoi votare.']));
     return;
   }
 
@@ -91,10 +95,24 @@ async function schedaVotazione(app, matchId) {
     app.append(el('div', { class: 'card vuoto' }, ['🔒 La votazione è chiusa. Puoi vedere medie e commenti nel dettaglio partita.']));
   }
 
-  // Lista votabili: giocatori di altre squadre + allenatori (chiunque)
-  const votabiliGiocatori = squadre.filter(g =>
-    g.id !== userId && g.ruolo !== 'allenatore' && !mieSquadre.includes(g.squadra));
-  const allenatori = squadre.filter(g => g.ruolo === 'allenatore' && g.id !== userId);
+  // Lista votabili: giocatori di altre squadre + allenatori (chiunque).
+  // FIX: un allenatore o un "tuttofare" non appartiene a nessuna squadra propria,
+  // quindi vota TUTTI i giocatori partecipanti (di qualunque squadra), non solo
+  // gli "avversari" come farebbe un giocatore normale.
+  const vistiGiocatori = new Set();
+  const votabiliGiocatori = squadre.filter(g => {
+    if (g.id === userId || g.ruolo === 'allenatore') return false;
+    if (vistiGiocatori.has(g.id)) return false; // evita duplicati per i "jolly" in più squadre
+    const votabile = sonoAllenatore || sonoTuttofare || !mieSquadre.includes(g.squadra);
+    if (votabile) vistiGiocatori.add(g.id);
+    return votabile;
+  });
+  const vistiAllenatori = new Set();
+  const allenatori = squadre.filter(g => {
+    if (g.ruolo !== 'allenatore' || g.id === userId || vistiAllenatori.has(g.id)) return false;
+    vistiAllenatori.add(g.id);
+    return true;
+  });
 
   app.append(el('div', { class: 'card' }, [
     el('div', { class: 'card-titolo' }, [`⚽ Giocatori delle altre squadre (${votabiliGiocatori.length})`]),
