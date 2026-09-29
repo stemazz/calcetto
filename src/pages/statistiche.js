@@ -16,13 +16,17 @@ export async function renderizzaStatistiche(app, profiloId) {
   app.append(spinner());
 
   // Carica le tabelle grezze (piccole: ~20 giocatori, poche decine di partite)
-  const [m, sq, gl, vt] = await Promise.all([
+  const [m, sq, gl, vt, mvpv] = await Promise.all([
     sb.from('matches').select('id,data,stato,gol_squadra_a,gol_squadra_b'),
     sb.from('squadre').select('giocatore_id,squadra,match_id'),
     sb.from('goals').select('giocatore_id,autogol,match_id'),
     sb.from('vista_voti_per_partita').select('match_id,data,votato_id,media_voto,num_voti'),
+    // FIX: l'MVP è una scelta singola dei "tuttofare" (tabella mvp_votes),
+    // NON ha nulla a che fare con la media dei voti 1-10 ai giocatori.
+    sb.from('vista_mvp_risultato').select('match_id,data,candidato_id,num_voti_mvp'),
   ]);
   const partite = m.data || [], squadre = sq.data || [], gol = gl.data || [], voti = vt.data || [];
+  const mvpVoti = mvpv.data || [];
   app.innerHTML = '';
 
   // ------------------ Calcolo statistiche per stagione ------------------
@@ -87,19 +91,31 @@ export async function renderizzaStatistiche(app, profiloId) {
     // righeClassifica già filtra per anno (null = tutte le stagioni)
     const lista = righeClassifica(anno, imp);
 
-    // MVP per partita (nell'anno selezionato)
-    const perPartita = new Map();
-    for (const v of voti.filter(x => anno === null || annoDi(x.data) === anno)) {
-      const l = perPartita.get(v.match_id) ?? [];
-      l.push(v); perPartita.set(v.match_id, l);
+    // FIX: MVP reale, basato sui voti "tuttofare" (mvp_votes / vista_mvp_risultato),
+    // NON sulla media dei voti 1-10 ai giocatori (che è tutt'altra classifica,
+    // vedi "⭐ Miglior giocatore" più sotto).
+    const mvpFiltrati = mvpVoti.filter(x => anno === null || annoDi(x.data) === anno);
+    const perPartitaMVP = new Map();
+    for (const v of mvpFiltrati) {
+      const l = perPartitaMVP.get(v.match_id) ?? [];
+      l.push(v); perPartitaMVP.set(v.match_id, l);
     }
-    const mvp = [];
-    for (const [mid, lista2] of perPartita) {
-      const best = lista2.reduce((a, b) =>
-        (b.media_voto > a.media_voto || (b.media_voto === a.media_voto && b.num_voti > a.num_voti)) ? b : a);
-      mvp.push({ ...best, data: best.data });
+    // Vincitore/i per ogni partita (in caso di parità, MVP condiviso da più giocatori)
+    const mvpPerPartita = [];
+    for (const [mid, lista2] of perPartitaMVP) {
+      const max = Math.max(...lista2.map(x => x.num_voti_mvp));
+      const vincitori = lista2.filter(x => x.num_voti_mvp === max).map(x => x.candidato_id);
+      mvpPerPartita.push({ match_id: mid, data: lista2[0].data, vincitori, voti: max });
     }
-    mvp.sort((a, b) => b.data.localeCompare(a.data));
+    mvpPerPartita.sort((a, b) => b.data.localeCompare(a.data));
+
+    // Classifica: quante volte ogni giocatore ha vinto l'MVP nelle partite passate
+    const conteggioMVP = {};
+    for (const r of mvpPerPartita) for (const gid of r.vincitori)
+      conteggioMVP[gid] = (conteggioMVP[gid] || 0) + 1;
+    const classificaMVP = Object.entries(conteggioMVP)
+      .map(([gid, n]) => ({ giocatore_id: gid, ...(profiloPerId(gid) || {}), vittorieMVP: n }))
+      .sort((a, b) => b.vittorieMVP - a.vittorieMVP);
 
     const topVoti = lista.filter(s => s.idoneo && s.num_voti > 0).sort((a, b) => b.media_voti - a.media_voti);
     const cannonieri = lista.filter(s => s.gol > 0)
@@ -168,16 +184,27 @@ export async function renderizzaStatistiche(app, profiloId) {
         el('span', { class: 'voto-badge' }, [s.presenze]),
       ]))));
 
-    app.append(card('🌟 MVP partita per partita',
-      mvp.map(mm => {
-        const pr = profiloPerId(mm.votato_id);
+    app.append(card('🌟 Classifica MVP (premi vinti)',
+      classificaMVP.map((s, i) => el('div', { class: 'riga' }, [
+        el('span', { class: 'pos-medaglia' }, [MEDAGLIE[i] || `${i + 1}.`]),
+        avatar(s, 36),
+        el('div', { class: 'riga-testo' }, [
+          el('a', { class: 'riga-titolo', style: 'text-decoration:none;color:inherit',
+            href: `#/profilo/${s.giocatore_id}` }, [nomeProfilo(s)]),
+        ]),
+        el('span', { class: 'voto-badge voto-alto' }, [`🏆 ${s.vittorieMVP}`]),
+      ]))));
+
+    app.append(card('🗓️ MVP partita per partita',
+      mvpPerPartita.map(r => {
+        const nomi = r.vincitori.map(gid => nomeProfilo(profiloPerId(gid))).join(' e ');
         return el('div', { class: 'riga' }, [
-          avatar(pr || { nome: '?' }, 36),
+          avatar(profiloPerId(r.vincitori[0]) || { nome: '?' }, 36),
           el('div', { class: 'riga-testo' }, [
-            el('div', { class: 'riga-titolo' }, [nomeProfilo(pr)]),
-            el('div', { class: 'riga-sub' }, [fmtData(mm.data)]),
+            el('div', { class: 'riga-titolo' }, [nomi]),
+            el('div', { class: 'riga-sub' }, [fmtData(r.data)]),
           ]),
-          el('span', { class: 'voto-badge voto-alto' }, [Number(mm.media_voto).toFixed(1)]),
+          el('span', { class: 'voto-badge voto-alto' }, [`${r.voti} 🏆`]),
         ]);
       })));
 
