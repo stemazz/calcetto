@@ -90,7 +90,7 @@ export async function renderizzaDettaglio(app, id) {
   if (squadre.length) {
     const nCol = Math.max(2, Math.min(4, p.num_squadre || 2));
     const cols = ['A','B','C','D'].slice(0, nCol).map(lettera => {
-      const giocatori = squadre.filter(g => g.squadra === lettera);
+      const giocatori = squadre.filter(g => (g.squadra || '').toUpperCase() === lettera);
       const allenatore = giocatori.find(g => g.ruolo === 'allenatore');
       const jolly = giocatori.filter(g => g.ruolo === 'jolly');
       const normali = giocatori.filter(g => g.ruolo !== 'allenatore' && g.ruolo !== 'jolly');
