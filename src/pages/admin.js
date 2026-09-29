@@ -220,7 +220,7 @@ async function riempiGestione(p, box, contenuto) {
   const letters = ['A','B','C','D'].slice(0, nSq);
   const colonne = el('div', { class: 'squadre-grid', style: `grid-template-columns:repeat(${nSq},1fr)` });
   for (const lettera of letters) {
-    const giocatori = squadre.filter(g => g.squadra === lettera);
+    const giocatori = squadre.filter(g => (g.squadra || '').toUpperCase() === lettera);
     const colori = { A:['#e9f2fc','#2273d2'], B:['#f3ebfd','#7a3fd1'],
                      C:['#e7f8ec','#0e7a3d'], D:['#fff1e0','#e05e00'] }[lettera];
     const col = el('div', { style: `background:${colori[0]};border-radius:12px;padding:10px;min-width:0` }, [
