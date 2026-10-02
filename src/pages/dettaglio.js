@@ -132,9 +132,19 @@ export async function renderizzaDettaglio(app, id) {
   }
 
   // Voti con commenti anonimi (solo giocatori che hanno partecipato)
+  // FIX: il filtro "g.id !== userId" escludeva SEMPRE il giocatore che sta
+  // guardando la pagina, impedendogli di vedere i PROPRI voti ricevuti —
+  // sembrava un filtro bloccato sulla propria persona. I voti sono anonimi
+  // solo rispetto a CHI ha votato, non vanno nascosti a CHI è stato votato.
   if (p.stato === 'giocata' && squadre.some(g => g.id === userId)) {
+    const vistiVotiCC = new Set(); // evita righe duplicate per i "jolly" in più squadre
     const bloccoVoti = squadre
-      .filter(g => g.id !== userId && votiCC[g.id] && votiCC[g.id].num_voti > 0)
+      .filter(g => {
+        if (!votiCC[g.id] || !votiCC[g.id].num_voti) return false;
+        if (vistiVotiCC.has(g.id)) return false;
+        vistiVotiCC.add(g.id);
+        return true;
+      })
       .map(g => {
         const v = votiCC[g.id];
         const listaCommenti = (v.commenti_anonimi || []).map(cv =>
