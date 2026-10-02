@@ -50,8 +50,12 @@ export async function renderizzaStatistiche(app, profiloId) {
     }
     for (const g of gol.filter(x => !x.autogol && idPartite.has(x.match_id))) tocca(g.giocatore_id).gol++;
     // medie voti per giocatore nell'anno
+    // FIX: con anno===null ("Tutte le stagioni") il confronto diretto con
+    // annoDi(x.data) non è mai vero, quindi la media voti risultava sempre
+    // vuota per tutti sotto "Tutte" — qui manca lo stesso "anno === null ||"
+    // già usato correttamente per partite, MVP e le altre sezioni.
     const sommaVoti = {}; // id -> { sommaPonderata, nVoti }
-    for (const v of voti.filter(x => annoDi(x.data) === anno)) {
+    for (const v of voti.filter(x => anno === null || annoDi(x.data) === anno)) {
       const o = sommaVoti[v.votato_id] ??= { somma: 0, n: 0 };
       o.somma += Number(v.media_voto) * v.num_voti;
       o.n += v.num_voti;
@@ -185,6 +189,10 @@ export async function renderizzaStatistiche(app, profiloId) {
         el('span', { class: 'voto-badge' }, [s.presenze]),
       ]))));
 
+    // NOTA: lo storico "partita per partita" dell'MVP non va ripetuto qui —
+    // è già mostrato, meglio contestualizzato, nella pagina della singola
+    // partita (card "🌟 MVP della partita"). Qui in Statistiche (vista
+    // aggregata) resta solo la classifica cumulativa.
     app.append(card('🌟 Classifica MVP (premi vinti)',
       classificaMVP.map((s, i) => el('div', { class: 'riga' }, [
         el('span', { class: 'pos-medaglia' }, [MEDAGLIE[i] || `${i + 1}.`]),
@@ -195,19 +203,6 @@ export async function renderizzaStatistiche(app, profiloId) {
         ]),
         el('span', { class: 'voto-badge voto-alto' }, [`🏆 ${s.vittorieMVP}`]),
       ]))));
-
-    app.append(card('🗓️ MVP partita per partita',
-      mvpPerPartita.map(r => {
-        const nomi = r.vincitori.map(gid => nomeProfilo(profiloPerId(gid))).join(' e ');
-        return el('div', { class: 'riga' }, [
-          avatar(profiloPerId(r.vincitori[0]) || { nome: '?' }, 36),
-          el('div', { class: 'riga-testo' }, [
-            el('div', { class: 'riga-titolo' }, [nomi]),
-            el('div', { class: 'riga-sub' }, [fmtData(r.data)]),
-          ]),
-          el('span', { class: 'voto-badge voto-alto' }, [`${r.voti} 🏆`]),
-        ]);
-      })));
 
     const icone = { portiere: '🧤', difensore: '🛡️', centrocampista: '⚙️', attaccante: '🎯' };
     app.append(card('🧤 Migliori per ruolo', Object.entries(perRuolo).map(([ruolo, s]) =>
