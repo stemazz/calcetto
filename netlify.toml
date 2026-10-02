@@ -1,0 +1,17 @@
+# ============================================================================
+# Config Netlify — evita che i browser tengano in cache versioni vecchie dei
+# file JS dell'app. Senza questo, dopo un redeploy alcuni utenti potrebbero
+# continuare a vedere bug già corretti (es. "[object HTMLDivElement]") finché
+# non svuotano manualmente la cache del browser.
+# "no-cache" NON disabilita la cache: obbliga solo il browser a verificare
+# con il server se il file è cambiato prima di riusarlo (richiesta leggera).
+# ============================================================================
+[[headers]]
+  for = "/src/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
