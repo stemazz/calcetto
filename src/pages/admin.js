@@ -7,7 +7,7 @@ import {
   listaPartite, creaPartita, modificaPartita, eliminaPartita,
   iscrittiPartita, iscriviManuale, rimuoviDaPartita,
   squadrePartita, impostaSquadra, generaSquadreBilate, impostaAllenatore, segnaJolly,
-  impostaRisultato, gestisciVotazione,
+  impostaRisultato, gestisciVotazione, marcatoriPartita,
   tuttiVoti, eliminaVoto, salvaVotoAdmin,
   listaProfili, aggiornaProfilo, impostaAttivo, resetPassword, cambiaEmail,
   promuoviAdmin, setTuttofare, eliminaUtente, eliminaDatiDemo,
@@ -133,6 +133,13 @@ async function riempiGestione(p, box, contenuto) {
   const tutti = await listaProfili();
   const attivi = tutti.filter(g => g.attivo);
   const candidatiMVPList = await candidatiMVP(p.id).catch(() => []);
+  // FIX: i gol/autogol già salvati vanno ricaricati, altrimenti il pannello
+  // ripartiva sempre da zero e risalvare il risultato cancellava in
+  // silenzio i marcatori già registrati per chi non veniva reinserito.
+  const marcatoriEsistenti = p.stato === 'giocata'
+    ? await marcatoriPartita(p.id).catch(() => [])
+    : [];
+  const golEsistenti = new Map(marcatoriEsistenti.map(m => [m.id, m]));
   box.innerHTML = '';
   const blocco = el('div', { class: 'admin-blocco' });
 
@@ -188,7 +195,11 @@ async function riempiGestione(p, box, contenuto) {
   blocco.append(el('div', { class: 'sezione-titolo' },
     [`👥 Iscritti (${iscritti.filter(g => !g.in_attesa).length}/${p.max_giocatori})`]));
   const idIscritti = new Set(iscritti.map(g => g.id));
-  blocco.append(iscritti.map(g => el('div', { class: 'riga' }, [
+  // FIX: blocco.append() è il metodo nativo del browser, non l'helper el().
+  // Passargli un array (il risultato di .map()) lo trasforma in testo
+  // ("[object HTMLDivElement]" ripetuto) invece di inserire i singoli
+  // elementi: va "spacchettato" con l'operatore spread (...).
+  blocco.append(...iscritti.map(g => el('div', { class: 'riga' }, [
     avatar(g, 30), el('div', { class: 'riga-testo' }, [
       el('div', { class: 'riga-titolo', style: 'font-size:14px' }, [nomeProfilo(g)]),
       g.in_attesa ? el('div', { class: 'riga-sub' }, ['in lista d\'attesa']) : null,
@@ -304,25 +315,40 @@ async function riempiGestione(p, box, contenuto) {
   // Allenatore
   blocco.append(el('div', { class: 'sezione-titolo' }, ['👔 Allenatore per squadra']));
   for (const lettera of letters) {
-    const selAll = el('select', { class: 'input', style: 'min-height:40px' },
-      [el('option', { value: '' }, [`— nessuno allenatore per sq ${lettera} —`]),
-       ...attivi.map(g => el('option', { value: `${g.id}|${lettera}`, 'data-id': g.id }, [nomeProfilo(g)]))]);
+    // FIX: il coach ATTUALMENTE assegnato va letto da squadre/match_ruoli e
+    // preselezionato nel menu. Prima la select partiva sempre da "— nessuno —"
+    // e il bottone "rimuovi" leggeva l'id da un'opzione che non lo possedeva
+    // mai, usando un UUID finto: la rimozione non funzionava per nessuno.
+    const coachAttuale = squadre.find(g => (g.squadra || '').toUpperCase() === lettera && g.ruolo === 'allenatore');
+    const selAll = el('select', { class: 'input', style: 'min-height:40px' }, [
+      el('option', { value: '', ...(!coachAttuale ? { selected: '' } : {}) },
+        [`— nessuno allenatore per sq ${lettera} —`]),
+      ...attivi.map(g => el('option',
+        { value: g.id, ...(coachAttuale?.id === g.id ? { selected: '' } : {}) },
+        [nomeProfilo(g)])),
+    ]);
     blocco.append(el('div', { class: 'form-riga', style: 'align-items:center' }, [
       el('div', { class: 'campo', style: 'min-width:60px;font-weight:900' }, [`Sq ${lettera}`]),
       selAll,
-      el('button', { class: 'btn btn-primary btn-mini', onclick: async () => {
+      el('button', { class: 'btn btn-primary btn-mini', onclick: async (e) => {
+        e.target.disabled = true;
         try {
-          const v = selAll.value;
-          if (!v) {
-            await impostaAllenatore(p.id, selAll.options[selAll.selectedIndex]?.dataset?.id || '00000000-0000-0000-0000-000000000000', null);
-            toast(`Allenatore Sq ${lettera} rimosso (se presente).`);
-          } else {
-            const [gid] = v.split('|');
-            await impostaAllenatore(p.id, gid, lettera);
-            toast(`Allenatore Sq ${lettera} impostato.`);
+          const nuovoId = selAll.value || null;
+          if (coachAttuale && coachAttuale.id !== nuovoId) {
+            // rimuove SEMPRE il coach realmente assegnato prima, usando il suo id vero
+            await impostaAllenatore(p.id, coachAttuale.id, null);
           }
-          await riempiGestione(p, box, contenuto);
+          if (nuovoId && nuovoId !== coachAttuale?.id) {
+            await impostaAllenatore(p.id, nuovoId, lettera);
+            toast(`Allenatore Sq ${lettera} impostato.`);
+          } else if (!nuovoId && coachAttuale) {
+            toast(`Allenatore Sq ${lettera} rimosso.`);
+          } else {
+            toast('Nessuna modifica.');
+          }
+          await riempiGestione(p, box, contenuto); return;
         } catch (err) { toast(err.message, 'errore'); }
+        e.target.disabled = false;
       }}, ['Salva']),
     ]));
   }
@@ -366,11 +392,16 @@ async function riempiGestione(p, box, contenuto) {
     el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gol Squadra A']), gA]),
     el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gol Squadra B']), gB]),
   ]));
-  const schierati = squadre.length ? squadre : iscritti.filter(g => !g.in_attesa);
+  // FIX: gli allenatori non segnano gol — senza l'esclusione comparivano
+  // anche loro nella lista marcatori (da quando squadrePartita() li include).
+  const schierati = (squadre.length ? squadre : iscritti.filter(g => !g.in_attesa))
+    .filter(g => g.ruolo !== 'allenatore');
   const inputGol = new Map(); const inputAuto = new Map();
   for (const g of schierati) {
-    const n = el('input', { class: 'input', type: 'number', min: 0, max: 20, value: 0, style: 'min-height:36px;max-width:70px' });
-    const a = el('input', { type: 'checkbox' });
+    const esiste = golEsistenti.get(g.id); // FIX: precompila con i gol già salvati
+    const n = el('input', { class: 'input', type: 'number', min: 0, max: 20,
+      value: esiste?.gol || 0, style: 'min-height:36px;max-width:70px' });
+    const a = el('input', { type: 'checkbox', ...(esiste?.autogol ? { checked: '' } : {}) });
     inputGol.set(g.id, n); inputAuto.set(g.id, a);
     blocco.append(el('div', { class: 'riga', style: 'padding:5px 0' }, [
       avatar(g, 28), el('div', { class: 'riga-testo' }, [
@@ -382,21 +413,43 @@ async function riempiGestione(p, box, contenuto) {
     ]));
   }
   blocco.append(el('button', { class: 'btn btn-arancio btn-blocco', onclick: async (e) => {
-    e.target.disabled = true;
     try {
       const marcatori = [];
+      let sommaGolA = 0, sommaGolB = 0;         // gol "normali" per squadra
+      let sommaAutogolA = 0, sommaAutogolB = 0; // autogol (contano per la squadra AVVERSARIA)
       for (const [id, input] of inputGol) {
         const gol = Number(input.value) || 0;
-        const auto = inputAuto.get(id).checked ? 1 : 0;
-        if (gol > 0) marcatori.push({ user_id: id, gol, autogol: false });
-        if (auto > 0) marcatori.push({ user_id: id, gol: auto, autogol: true });
+        const autogolFlag = inputAuto.get(id).checked;
+        const g = schierati.find(x => x.id === id);
+        const lato = ((g?.squadra || '').toUpperCase() === 'A' || (g?.squadra || '').toUpperCase() === 'C') ? 'A' : 'B';
+        if (gol > 0) {
+          marcatori.push({ user_id: id, gol, autogol: false });
+          if (lato === 'A') sommaGolA += gol; else sommaGolB += gol;
+        }
+        if (autogolFlag) {
+          marcatori.push({ user_id: id, gol: 1, autogol: true });
+          if (lato === 'A') sommaAutogolA += 1; else sommaAutogolB += 1;
+        }
       }
+      // CONTROLLO richiesto: la somma dei gol assegnati ai giocatori deve
+      // coincidere col risultato finale (un autogol vale un punto per
+      // la squadra AVVERSARIA rispetto a chi lo segna).
+      const totaleA = sommaGolA + sommaAutogolB;
+      const totaleB = sommaGolB + sommaAutogolA;
+      if (totaleA !== Number(gA.value) || totaleB !== Number(gB.value)) {
+        const continua = confirm(
+          `⚠️ I gol dei singoli giocatori (A: ${totaleA}, B: ${totaleB}) non coincidono ` +
+          `con il risultato inserito (A: ${gA.value}, B: ${gB.value}).\n\n` +
+          `Salvare comunque?`);
+        if (!continua) return;
+      }
+      e.target.disabled = true;
       await impostaRisultato(p.id, Number(gA.value), Number(gB.value), marcatori);
       toast('Risultato salvato, votazione aperta! ⭐');
       await riempiGestione(p, box, contenuto); return;
     } catch (err) { toast(err.message, 'errore'); }
     e.target.disabled = false;
-  }}, ['💾 Salva risultato e APRI votazione']));
+  }}, [p.stato === 'giocata' ? '💾 Aggiorna risultato e marcatori' : '💾 Salva risultato e APRI votazione']));
 
   // Votazione
   blocco.append(el('div', { class: 'sezione-titolo' }, ['⭐ Votazione']));
