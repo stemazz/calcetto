@@ -178,6 +178,17 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .voto-alto { background: var(--verde); color: #fff; }
 .voto-basso { background: #fdecec; color: var(--rosso); }
 
+/* ---------- Barre orizzontali nelle classifiche (Statistiche) ---------- */
+.barra-rank-sfondo {
+  height: 6px; border-radius: 99px; background: #eef1ef;
+  margin-top: 6px; overflow: hidden;
+}
+.barra-rank {
+  height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--verde), var(--arancio));
+  transition: width .4s ease;
+}
+
 /* ---------- Tab ---------- */
 .tab-bar { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; }
 .tab-btn {
