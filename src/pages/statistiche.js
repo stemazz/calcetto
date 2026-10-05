@@ -35,7 +35,14 @@ export async function renderizzaStatistiche(app, profiloId) {
 
   // ------------------ Calcolo statistiche per stagione ------------------
   const annoDi = (data) => new Date(data + 'T12:00:00').getFullYear();
-  const annid = [...new Set(partite.map(p => annoDi(p.data)))].sort((a, b) => b - a);
+  // Le stagioni selezionabili sono quelle con almeno una partita, PIÙ l'anno
+  // corrente e il prossimo (così si può già preparare "Stagione 2027" prima
+  // che esista una partita giocata in quell'anno). Si aggiorna da solo ogni
+  // 1° gennaio, senza bisogno di toccare il codice ogni anno.
+  const annoOggi = new Date().getFullYear();
+  const annid = [...new Set([
+    ...partite.map(p => annoDi(p.data)), annoOggi, annoOggi + 1,
+  ])].sort((a, b) => b - a);
 
   function statisticheAnno(anno) {
     // anno = numero dell'anno, oppure null = tutte le stagioni
@@ -153,13 +160,21 @@ export async function renderizzaStatistiche(app, profiloId) {
       if (best) perRuolo[ruolo] = best;
     }
 
-    const riga = (s, i, badgeHtml, valore, cls = '') => el('div', { class: 'riga' }, [
+    // Barretta orizzontale sotto ogni riga di classifica, proporzionale al
+    // valore rispetto al massimo della lista (0-100%). Puramente visuale,
+    // nessuna libreria esterna: un div con una larghezza in percentuale.
+    const barraRank = (percentuale) => el('div', { class: 'barra-rank-sfondo' }, [
+      el('div', { class: 'barra-rank', style: `width:${Math.max(0, Math.min(100, percentuale))}%` }),
+    ]);
+
+    const riga = (s, i, badgeHtml, valore, cls = '', percentuale = null) => el('div', { class: 'riga' }, [
       el('span', { class: 'pos-medaglia' }, [MEDAGLIE[i] || (i >= 0 ? `${i + 1}.` : '•')]),
       avatar(s, 36),
       el('div', { class: 'riga-testo' }, [
         el('a', { class: 'riga-titolo', style: 'text-decoration:none;color:inherit', href: `#/profilo/${s.giocatore_id}` },
           [nomeProfilo(s)]),
         el('div', { class: 'riga-sub' }, [badgeHtml]),
+        percentuale !== null ? barraRank(percentuale) : null,
       ]),
       el('span', { class: 'voto-badge ' + cls }, [String(valore)]),
     ]);
@@ -186,13 +201,22 @@ export async function renderizzaStatistiche(app, profiloId) {
       ]));
     }
 
+    // Scala voti fissa (1-10): la barra riflette il voto reale, non solo
+    // il confronto fra i primi in classifica. Gol/presenze/MVP invece non
+    // hanno un massimo teorico, quindi si scalano sul valore più alto
+    // presente in quella specifica lista.
+    const maxGol = Math.max(1, ...cannonieri.map(s => s.gol), 0);
+    const maxPresenze = Math.max(1, ...presenze.map(s => s.presenze), 0);
+    const maxMVP = Math.max(1, ...classificaMVP.map(s => s.vittorieMVP), 0);
+
     app.append(card(`⭐ Miglior giocatore (min. ${imp.min_partite_classifica} partite)`,
       topVoti.map((s, i) => riga(s, i, `${s.num_voti} voti · ${s.presenze} partite`,
-        s.media_voti.toFixed(2), s.media_voti >= 7 ? 'voto-alto' : ''))));
+        s.media_voti.toFixed(2), s.media_voti >= 7 ? 'voto-alto' : '', (s.media_voti / 10) * 100))));
 
     app.append(card('⚽ Capocannoniere',
       cannonieri.map((s, i) => riga(s, i,
-        `${(s.gol / Math.max(s.presenze, 1)).toFixed(2)} gol/partita · ${s.presenze} partite`, `${s.gol} ⚽`))));
+        `${(s.gol / Math.max(s.presenze, 1)).toFixed(2)} gol/partita · ${s.presenze} partite`,
+        `${s.gol} ⚽`, '', (s.gol / maxGol) * 100))));
 
     app.append(card('🏃 Presenze e bilancio V-P-S',
       presenze.map((s, i) => el('div', { class: 'riga' }, [
@@ -206,6 +230,7 @@ export async function renderizzaStatistiche(app, profiloId) {
             el('span', { class: 'badge badge-grigio' }, [`${s.pareggi}P`]), ' ',
             el('span', { class: 'badge badge-rosso' }, [`${s.sconfitte}S`]),
           ]),
+          barraRank((s.presenze / maxPresenze) * 100),
         ]),
         el('span', { class: 'voto-badge' }, [s.presenze]),
       ]))));
@@ -221,6 +246,7 @@ export async function renderizzaStatistiche(app, profiloId) {
         el('div', { class: 'riga-testo' }, [
           el('a', { class: 'riga-titolo', style: 'text-decoration:none;color:inherit',
             href: `#/profilo/${s.giocatore_id}` }, [nomeProfilo(s)]),
+          barraRank((s.vittorieMVP / maxMVP) * 100),
         ]),
         el('span', { class: 'voto-badge voto-alto' }, [`🏆 ${s.vittorieMVP}`]),
       ]))));
