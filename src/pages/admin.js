@@ -7,7 +7,7 @@ import {
   listaPartite, creaPartita, modificaPartita, eliminaPartita,
   iscrittiPartita, iscriviManuale, rimuoviDaPartita,
   squadrePartita, impostaSquadra, generaSquadreBilate, impostaAllenatore, segnaJolly,
-  impostaRisultato, gestisciVotazione, marcatoriPartita,
+  gestisciVotazione, marcatoriPartita, risultatiPartita, impostaRisultati,
   tuttiVoti, eliminaVoto, salvaVotoAdmin,
   listaProfili, aggiornaProfilo, impostaAttivo, resetPassword, cambiaEmail,
   promuoviAdmin, setTuttofare, eliminaUtente, eliminaDatiDemo,
@@ -140,6 +140,12 @@ async function riempiGestione(p, box, contenuto) {
     ? await marcatoriPartita(p.id).catch(() => [])
     : [];
   const golEsistenti = new Map(marcatoriEsistenti.map(m => [m.id, m]));
+  // Risultati già salvati per ogni coppia di squadre (3+ squadre = più coppie)
+  const risultatiEsistenti = p.stato === 'giocata'
+    ? await risultatiPartita(p.id).catch(() => [])
+    : [];
+  const risultatiMappa = new Map(
+    risultatiEsistenti.map(r => [`${r.squadra_a}|${r.squadra_b}`, r]));
   box.innerHTML = '';
   const blocco = el('div', { class: 'admin-blocco' });
 
@@ -384,14 +390,29 @@ async function riempiGestione(p, box, contenuto) {
   blocco.append(el('div', { class: 'riga-sub', style: 'margin-top:6px' },
     ['Solo i profili marcati "tuttofare" possono poi scegliere uno di questi come MVP.']));
 
-  // Risultato e marcatori
+  // Risultato e marcatori — FIX: ora genera UNA coppia di caselle gol per
+  // ogni combinazione di squadre (1 con 2 squadre, 3 con 3, 6 con 4),
+  // invece delle due sole caselle "Gol Squadra A/B" che bastavano solo
+  // per le partite a 2 squadre.
   blocco.append(el('div', { class: 'sezione-titolo' }, ['🏁 Risultato e marcatori']));
-  const gA = el('input', { class: 'input', type: 'number', min: 0, max: 99, value: p.gol_squadra_a ?? 0, style: 'min-height:40px' });
-  const gB = el('input', { class: 'input', type: 'number', min: 0, max: 99, value: p.gol_squadra_b ?? 0, style: 'min-height:40px' });
-  blocco.append(el('div', { class: 'form-riga' }, [
-    el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gol Squadra A']), gA]),
-    el('div', { class: 'campo' }, [el('label',{class:'campo-label'},['Gol Squadra B']), gB]),
-  ]));
+  const coppie = [];
+  for (let i = 0; i < letters.length; i++)
+    for (let j = i + 1; j < letters.length; j++) coppie.push([letters[i], letters[j]]);
+
+  const inputRisultati = new Map(); // "A|B" -> { a: <input>, b: <input> }
+  blocco.append(el('div', { class: 'form' }, coppie.map(([x, y]) => {
+    const esiste = risultatiMappa.get(`${x}|${y}`);
+    const inA = el('input', { class: 'input', type: 'number', min: 0, max: 99,
+      value: esiste?.gol_a ?? 0, style: 'min-height:40px' });
+    const inB = el('input', { class: 'input', type: 'number', min: 0, max: 99,
+      value: esiste?.gol_b ?? 0, style: 'min-height:40px' });
+    inputRisultati.set(`${x}|${y}`, { a: inA, b: inB });
+    return el('div', { class: 'form-riga' }, [
+      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, [`Gol Squadra ${x}`]), inA]),
+      el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, [`Gol Squadra ${y}`]), inB]),
+    ]);
+  })));
+
   // FIX: gli allenatori non segnano gol — senza l'esclusione comparivano
   // anche loro nella lista marcatori (da quando squadrePartita() li include).
   const schierati = (squadre.length ? squadre : iscritti.filter(g => !g.in_attesa))
@@ -415,36 +436,56 @@ async function riempiGestione(p, box, contenuto) {
   blocco.append(el('button', { class: 'btn btn-arancio btn-blocco', onclick: async (e) => {
     try {
       const marcatori = [];
-      let sommaGolA = 0, sommaGolB = 0;         // gol "normali" per squadra
-      let sommaAutogolA = 0, sommaAutogolB = 0; // autogol (contano per la squadra AVVERSARIA)
+      const golPerSquadra = {}; // 'A' -> gol totali assegnati ai suoi giocatori
       for (const [id, input] of inputGol) {
         const gol = Number(input.value) || 0;
         const autogolFlag = inputAuto.get(id).checked;
         const g = schierati.find(x => x.id === id);
-        const lato = ((g?.squadra || '').toUpperCase() === 'A' || (g?.squadra || '').toUpperCase() === 'C') ? 'A' : 'B';
+        const miaSq = (g?.squadra || '').toUpperCase();
+        // un autogol vale un punto per TUTTE le squadre avversarie di chi lo segna
+        const avversarie = letters.filter(l => l !== miaSq);
         if (gol > 0) {
           marcatori.push({ user_id: id, gol, autogol: false });
-          if (lato === 'A') sommaGolA += gol; else sommaGolB += gol;
+          golPerSquadra[miaSq] = (golPerSquadra[miaSq] || 0) + gol;
         }
         if (autogolFlag) {
           marcatori.push({ user_id: id, gol: 1, autogol: true });
-          if (lato === 'A') sommaAutogolA += 1; else sommaAutogolB += 1;
+          // con più di 2 squadre non sappiamo A QUALE avversaria regalare il
+          // punto: lo segnaliamo nel controllo invece di indovinare
+          if (avversarie.length === 1) {
+            golPerSquadra[avversarie[0]] = (golPerSquadra[avversarie[0]] || 0) + 1;
+          }
         }
       }
-      // CONTROLLO richiesto: la somma dei gol assegnati ai giocatori deve
-      // coincidere col risultato finale (un autogol vale un punto per
-      // la squadra AVVERSARIA rispetto a chi lo segna).
-      const totaleA = sommaGolA + sommaAutogolB;
-      const totaleB = sommaGolB + sommaAutogolA;
-      if (totaleA !== Number(gA.value) || totaleB !== Number(gB.value)) {
+
+      const risultati = coppie.map(([x, y]) => ({
+        squadra_a: x, squadra_b: y,
+        gol_a: Number(inputRisultati.get(`${x}|${y}`).a.value) || 0,
+        gol_b: Number(inputRisultati.get(`${x}|${y}`).b.value) || 0,
+      }));
+
+      // CONTROLLO richiesto: la somma dei gol assegnati ai giocatori di ogni
+      // squadra deve coincidere col totale dei gol di quella squadra in TUTTI
+      // i risultati inseriti (una squadra può comparire in più coppie).
+      const totaleUfficiale = {};
+      for (const r of risultati) {
+        totaleUfficiale[r.squadra_a] = (totaleUfficiale[r.squadra_a] || 0) + r.gol_a;
+        totaleUfficiale[r.squadra_b] = (totaleUfficiale[r.squadra_b] || 0) + r.gol_b;
+      }
+      const discrepanze = letters.filter(l => (golPerSquadra[l] || 0) !== (totaleUfficiale[l] || 0));
+      if (discrepanze.length || (letters.length > 2 && marcatori.some(m => m.autogol))) {
+        const righe = discrepanze.map(l =>
+          `Squadra ${l}: giocatori ${golPerSquadra[l] || 0} vs risultato ${totaleUfficiale[l] || 0}`);
         const continua = confirm(
-          `⚠️ I gol dei singoli giocatori (A: ${totaleA}, B: ${totaleB}) non coincidono ` +
-          `con il risultato inserito (A: ${gA.value}, B: ${gB.value}).\n\n` +
-          `Salvare comunque?`);
+          `⚠️ Controllo gol:\n${righe.join('\n') || 'nessuna discrepanza sui totali,'}` +
+          `${letters.length > 2 && marcatori.some(m => m.autogol)
+            ? '\nCon più di 2 squadre un autogol non viene assegnato automaticamente a una squadra avversaria specifica: verificalo tu manualmente nei risultati sopra.' : ''}` +
+          `\n\nSalvare comunque?`);
         if (!continua) return;
       }
+
       e.target.disabled = true;
-      await impostaRisultato(p.id, Number(gA.value), Number(gB.value), marcatori);
+      await impostaRisultati(p.id, risultati, marcatori);
       toast('Risultato salvato, votazione aperta! ⭐');
       await riempiGestione(p, box, contenuto); return;
     } catch (err) { toast(err.message, 'errore'); }
@@ -650,7 +691,8 @@ async function schedaVoti(contenuto) {
   contenuto.innerHTML = '';
   if (!giocate.length) { contenuto.append(el('div', { class: 'card vuoto' }, ['Nessuna partita giocata'])); return; }
   const selettore = el('select', { class: 'input', style: 'margin-bottom:12px' },
-    giocate.map(p => el('option', { value: p.id }, [fmtData(p.data) + ` (${p.gol_squadra_a}–${p.gol_squadra_b})`])));
+    giocate.map(p => el('option', { value: p.id }, [fmtData(p.data) +
+      (p.gol_squadra_a !== null ? ` (${p.gol_squadra_a}–${p.gol_squadra_b})` : ` (${p.num_squadre || 2} squadre)`)])));
   const box = el('div');
   contenuto.append(el('div', { class: 'card' }, [selettore]), box);
 
