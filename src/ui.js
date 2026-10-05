@@ -144,3 +144,52 @@ export function anteprimaImg(file, size = 90) {
             border:2px solid var(--verde);margin-top:6px;background:#fff`,
     onload: () => setTimeout(() => URL.revokeObjectURL(url), 30000) });
 }
+
+// ============================================================================
+// Esportazione calendario (.ics) — "Aggiungi al calendario" su una partita
+// ============================================================================
+
+/** Scappa i caratteri speciali richiesti dal formato iCalendar (RFC 5545) */
+function escapeICS(testo) {
+  return String(testo || '').replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1').replace(/\n/g, '\\n');
+}
+
+/** aaaa-mm-gg + hh:mm (locali) -> stringa iCalendar "aaaammggThhmmss" */
+function fmtICS(data, ora) {
+  const d = new Date(`${data}T${ora}`);
+  const n = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}${n(d.getMonth() + 1)}${n(d.getDate())}T${n(d.getHours())}${n(d.getMinutes())}00`;
+}
+
+/** Genera il contenuto testuale di un file .ics per una partita (durata: 90 minuti) */
+export function generaICS(p) {
+  const inizio = fmtICS(p.data, p.ora);
+  const dFine = new Date(new Date(`${p.data}T${p.ora}`).getTime() + 90 * 60000);
+  const n = (x) => String(x).padStart(2, '0');
+  const fine = `${dFine.getFullYear()}${n(dFine.getMonth() + 1)}${n(dFine.getDate())}T${n(dFine.getHours())}${n(dFine.getMinutes())}00`;
+  const adesso = fmtICS(new Date().toISOString().slice(0, 10), new Date().toTimeString().slice(0, 5));
+  const righe = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Calcetto tra Amici//IT', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${p.id}@calcetto-tra-amici`,
+    `DTSTAMP:${adesso}`,
+    `DTSTART:${inizio}`,
+    `DTEND:${fine}`,
+    `SUMMARY:${escapeICS('⚽ Calcetto' + (p.luogo ? ' — ' + p.luogo : ''))}`,
+    p.luogo ? `LOCATION:${escapeICS(p.luogo)}` : null,
+    'DESCRIPTION:Partita organizzata con Calcetto tra Amici',
+    'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean);
+  return righe.join('\r\n');
+}
+
+/** Scarica il file .ics della partita (apre il flusso "aggiungi a Google/Apple Calendar") */
+export function scaricaICS(p) {
+  const blob = new Blob([generaICS(p)], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: `calcetto-${p.data}.ics` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}

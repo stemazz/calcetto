@@ -247,6 +247,22 @@ export async function andamentoVoti(userId) {
   return data;
 }
 
+// --------------------------------- BADGE ------------------------------------
+/** Dati grezzi necessari per calcolare i badge di un giocatore (vedi badges.js) */
+export async function datiBadge(giocatoreId) {
+  const [p, s, m] = await Promise.all([
+    sb.from('matches').select('id').eq('stato', 'giocata').order('data'),
+    sb.from('squadre').select('match_id').eq('giocatore_id', giocatoreId),
+    sb.from('mvp_votes').select('match_id, candidato_id'),
+  ]);
+  if (p.error) throw new Error(messaggio(p.error));
+  return {
+    partiteGiocate: p.data || [],
+    squadreGiocatore: s.data || [],
+    mvpVoti: m.data || [],
+  };
+}
+
 // --------------------------------- PROFILI ---------------------------------
 export async function listaProfili() {
   const { data, error } = await sb.from('profiles').select('*').order('nome');
