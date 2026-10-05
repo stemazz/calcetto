@@ -45,7 +45,8 @@ export async function renderizzaVoti(app, matchId) {
     chiuse.length ? chiuse.map(p => el('div', { class: 'riga' }, [
       el('div', { class: 'riga-testo' }, [
         el('div', { class: 'riga-titolo' }, [fmtData(p.data)]),
-        el('div', { class: 'riga-sub' }, [`${p.gol_squadra_a}–${p.gol_squadra_b}`]),
+        el('div', { class: 'riga-sub' },
+          [p.gol_squadra_a !== null ? `${p.gol_squadra_a}–${p.gol_squadra_b}` : 'risultato in dettaglio']),
       ]),
       el('a', { class: 'btn btn-ghost btn-mini', href: `#/partita/${p.id}` }, ['Dettagli']),
     ])) : vuoto('Ancora nessuna partita giocata.'),

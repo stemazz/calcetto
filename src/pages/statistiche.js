@@ -16,7 +16,7 @@ export async function renderizzaStatistiche(app, profiloId) {
   app.append(spinner());
 
   // Carica le tabelle grezze (piccole: ~20 giocatori, poche decine di partite)
-  const [m, sq, gl, vt, mvpv] = await Promise.all([
+  const [m, sq, gl, vt, mvpv, rc] = await Promise.all([
     sb.from('matches').select('id,data,stato,gol_squadra_a,gol_squadra_b'),
     sb.from('squadre').select('giocatore_id,squadra,match_id'),
     sb.from('goals').select('giocatore_id,autogol,match_id'),
@@ -24,9 +24,13 @@ export async function renderizzaStatistiche(app, profiloId) {
     // FIX: l'MVP è una scelta singola dei "tuttofare" (tabella mvp_votes),
     // NON ha nulla a che fare con la media dei voti 1-10 ai giocatori.
     sb.from('vista_mvp_risultato').select('match_id,data,candidato_id,num_voti_mvp'),
+    // Risultati a coppie: con 3+ squadre una partita ne ha più di uno
+    // (es. A-B, A-C, B-C), non più un solo gol_squadra_a/b.
+    sb.from('risultati_coppie').select('match_id,squadra_a,squadra_b,gol_a,gol_b'),
   ]);
   const partite = m.data || [], squadre = sq.data || [], gol = gl.data || [], voti = vt.data || [];
   const mvpVoti = mvpv.data || [];
+  const risultati = rc.data || [];
   app.innerHTML = '';
 
   // ------------------ Calcolo statistiche per stagione ------------------
@@ -39,14 +43,31 @@ export async function renderizzaStatistiche(app, profiloId) {
     const idPartite = new Set(partiteAnno.map(p => p.id));
     const agg = {}; // id -> { presenze, vittorie, pareggi, sconfitte, gol }
     const tocca = (id) => (agg[id] ??= { presenze: 0, vittorie: 0, pareggi: 0, sconfitte: 0, gol: 0 });
+
+    // FIX: con 3+ squadre una partita ha PIÙ risultati (una sfida per ogni
+    // coppia di squadre che si è affrontata). Un giocatore accumula un
+    // esito (V/P/S) per OGNI sfida della sua squadra in quella partita —
+    // con 3 squadre può ottenere fino a 2 esiti nella stessa serata.
+    // Indicizza i risultati per partita, per un lookup veloce.
+    const risultatiPerMatch = new Map();
+    for (const r of risultati) {
+      if (!idPartite.has(r.match_id)) continue;
+      const l = risultatiPerMatch.get(r.match_id) ?? [];
+      l.push(r); risultatiPerMatch.set(r.match_id, l);
+    }
     for (const s of squadre.filter(x => idPartite.has(x.match_id))) {
-      const p = partiteAnno.find(x => x.id === s.match_id);
       const a = tocca(s.giocatore_id);
-      const sq = (s.squadra || '').toUpperCase();
       a.presenze++;
-      if (p.gol_squadra_a === p.gol_squadra_b) a.pareggi++;
-      else if ((sq === 'A' || sq === 'C') === (p.gol_squadra_a > p.gol_squadra_b)) a.vittorie++;
-      else a.sconfitte++;
+      const miaSq = (s.squadra || '').toUpperCase();
+      for (const r of (risultatiPerMatch.get(s.match_id) || [])) {
+        const ra = (r.squadra_a || '').toUpperCase(), rb = (r.squadra_b || '').toUpperCase();
+        if (miaSq !== ra && miaSq !== rb) continue;
+        const mio = miaSq === ra ? r.gol_a : r.gol_b;
+        const avv = miaSq === ra ? r.gol_b : r.gol_a;
+        if (mio > avv) a.vittorie++;
+        else if (mio === avv) a.pareggi++;
+        else a.sconfitte++;
+      }
     }
     for (const g of gol.filter(x => !x.autogol && idPartite.has(x.match_id))) tocca(g.giocatore_id).gol++;
     // medie voti per giocatore nell'anno

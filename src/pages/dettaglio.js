@@ -4,7 +4,7 @@
 // ============================================================================
 import { state } from '../state.js';
 import {
-  singolaPartita, iscrittiPartita, squadrePartita, marcatoriPartita,
+  singolaPartita, iscrittiPartita, squadrePartita, marcatoriPartita, risultatiPartita,
   votiConCommentiPartita, medieVotiPartita, mioMVPScelto, risultatoMVP, candidatiMVP,
 } from '../api.js';
 import { el, fmtData, fmtScadenza, avatar, nomeProfilo, toast, spinner, vuoto } from '../ui.js';
@@ -19,9 +19,10 @@ const COLORI_SQUADRA = {
 export async function renderizzaDettaglio(app, id) {
   app.append(spinner());
   const userId = state.sessione.user.id;
-  const [p, iscritti, squadre, marcatori, votiCC, medie, mvpMio, mvpRis, candidati] = await Promise.all([
+  const [p, iscritti, squadre, marcatori, risultati, votiCC, medie, mvpMio, mvpRis, candidati] = await Promise.all([
     singolaPartita(id), iscrittiPartita(id), squadrePartita(id),
-    marcatoriPartita(id), votiConCommentiPartita(id), medieVotiPartita(id),
+    marcatoriPartita(id), risultatiPartita(id).catch(() => []),
+    votiConCommentiPartita(id), medieVotiPartita(id),
     mioMVPScelto(id, userId).catch(() => null),
     risultatoMVP(id).catch(() => []),
     candidatiMVP(id).catch(() => []),
@@ -49,7 +50,12 @@ export async function renderizzaDettaglio(app, id) {
   ]));
 
   // Risultato e marcatori
-  if (p.stato === 'giocata' && p.gol_squadra_a !== null) {
+  // FIX: con 3+ squadre ci sono PIÙ risultati (uno per coppia), non più solo
+  // gol_squadra_a/b — che restano valorizzati solo quando esiste una sfida
+  // A-B. La card va quindi mostrata a "partita giocata", non più legata a
+  // quel singolo campo, altrimenti spariva del tutto per le partite a 3+
+  // squadre senza un confronto diretto A-B.
+  if (p.stato === 'giocata') {
     const righeM = marcatori.map(m => el('div', { class: 'riga' }, [
       avatar(m.profilo, 34),
       el('div', { class: 'riga-testo' }, [
@@ -58,10 +64,16 @@ export async function renderizzaDettaglio(app, id) {
       ]),
       el('span', { class: 'badge badge-arancio' }, [`${m.gol} ⚽`]),
     ]));
+    const righeRisultati = risultati.length
+      ? risultati.map(r => el('div', {
+          style: 'font-size:' + (risultati.length > 1 ? '20px' : '30px') +
+            ';font-weight:900;text-align:center;margin-bottom:4px' },
+          [`Squadra ${r.squadra_a} ${r.gol_a} – ${r.gol_b} Squadra ${r.squadra_b}`]))
+      : [el('div', { class: 'vuoto' }, ['Risultato non ancora inserito'])];
     app.append(el('div', { class: 'card' }, [
-      el('div', { class: 'card-titolo' }, ['🏁 Risultato']),
-      el('div', { style: 'font-size:30px;font-weight:900;text-align:center;margin-bottom:8px' },
-        [`Squadra A ${p.gol_squadra_a} – ${p.gol_squadra_b} Squadra B`]),
+      el('div', { class: 'card-titolo' }, ['🏁 Risultato' + (risultati.length > 1 ? 'i' : '')]),
+      ...righeRisultati,
+      el('div', { style: 'height:6px' }),
       marcatori.length ? righeM : el('div', { class: 'vuoto' }, ['Nessun marcatore registrato']),
     ]));
 

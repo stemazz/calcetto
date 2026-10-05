@@ -96,7 +96,11 @@ function rigaPartita(p, mie, userId) {
       el('div', { class: 'riga-titolo' }, [fmtData(p.data) + ' · ' + p.ora.slice(0, 5)]),
       el('div', { class: 'riga-sub' }, [
         p.stato === 'annullata' ? '❌ Annullata' : p.luogo || '—',
-        p.stato === 'giocata' ? ` · ${p.gol_squadra_a}–${p.gol_squadra_b}` : '',
+        // FIX: con 3+ squadre senza sfida diretta A-B questi campi sono null
+        // (i risultati veri sono nel dettaglio partita) — niente più "null–null"
+        p.stato === 'giocata'
+          ? (p.gol_squadra_a !== null ? ` · ${p.gol_squadra_a}–${p.gol_squadra_b}` : ' · risultato in dettaglio')
+          : '',
       ]),
     ]),
     p.stato === 'programmata' ? btn : null,
