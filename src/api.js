@@ -134,6 +134,18 @@ export async function marcatoriPartita(matchId) {
 export const impostaRisultato = (matchId, golA, golB, marcatori) =>
   rpc('imposta_risultato', { p_match: matchId, p_gol_a: golA, p_gol_b: golB, p_marcatori: marcatori });
 
+/** Tutti i risultati a coppie di una partita (uno per 2 squadre, fino a 6 per 4) */
+export async function risultatiPartita(matchId) {
+  const { data, error } = await sb.from('risultati_coppie')
+    .select('squadra_a, squadra_b, gol_a, gol_b').eq('match_id', matchId);
+  if (error) throw new Error(messaggio(error));
+  return data || [];
+}
+/** Admin: N risultati a coppie + marcatori (jsonb) e apertura automatica della votazione.
+ *  Usata per partite con 3 o più squadre; funziona anche con 2 (un solo risultato A-B). */
+export const impostaRisultati = (matchId, risultati, marcatori) =>
+  rpc('imposta_risultati', { p_match: matchId, p_risultati: risultati, p_marcatori: marcatori });
+
 // ---------------------------------- VOTI -----------------------------------
 export async function mieiVoti(matchId, userId) {
   const { data, error } = await sb.from('votes')
