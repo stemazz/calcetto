@@ -3,13 +3,14 @@
 // ============================================================================
 import { state, profiloPerId, aggiornaCacheProfilo } from '../state.js';
 import {
-  aggiornaProfilo, caricaFoto, statisticheGlobali, andamentoVoti,
+  aggiornaProfilo, caricaFoto, statisticheGlobali, andamentoVoti, datiBadge,
   nuovaPassword, mieIscrizioni, listaPartite,
 } from '../api.js';
 import {
   el, avatar, nomeProfilo, toast, spinner, vuoto, fmtData, fmtMese,
   ridimensiona, anteprimaImg,
 } from '../ui.js';
+import { calcolaBadge } from '../badges.js';
 
 export async function renderizzaProfilo(app, profiloId, soloPassword = false) {
   const mioId = state.sessione.user.id;
@@ -32,7 +33,9 @@ export async function renderizzaProfilo(app, profiloId, soloPassword = false) {
   }
 
   app.append(spinner());
-  const [stats, andamento] = await Promise.all([statisticheGlobali(), andamentoVoti(id)]);
+  const [stats, andamento, bd] = await Promise.all([
+    statisticheGlobali(), andamentoVoti(id), datiBadge(id).catch(() => null),
+  ]);
   const s = stats.find(x => x.giocatore_id === id);
   const p = profiloPerId(id) || (s ? { ...s, id: s.giocatore_id } : null);
   app.innerHTML = '';
@@ -58,6 +61,23 @@ export async function renderizzaProfilo(app, profiloId, soloPassword = false) {
         statBox(s.sconfitte, 'sconfitte'),
       ]),
     ]));
+
+    // Badge / achievement — piccola gamification: ottenuti in evidenza,
+    // gli altri in grigio chiaro con la soglia da raggiungere nel tooltip.
+    if (bd) {
+      const badge = calcolaBadge({ stats: s, giocatoreId: id, ...bd });
+      app.append(el('div', { class: 'card' }, [
+        el('div', { class: 'card-titolo' }, ['🏅 Badge']),
+        el('div', { class: 'badge-grid' }, badge.map(b => el('div', {
+          class: 'badge-item' + (b.ottenuto ? ' badge-ottenuto' : ''),
+          title: b.descrizione,
+        }, [
+          el('div', { class: 'badge-icona' }, [b.icona]),
+          el('div', { class: 'badge-nome' }, [b.nome]),
+        ]))),
+      ]));
+    }
+
     app.append(el('div', { class: 'card' }, [
       el('div', { class: 'card-titolo' }, ['📈 Andamento voti nel tempo']),
       andamento.length

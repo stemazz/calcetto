@@ -182,6 +182,8 @@ export async function renderizzaStatistiche(app, profiloId) {
     app.innerHTML = '';
     app.append(el('h2', { style: 'margin:4px 0 12px;font-size:20px' }, ['📊 Statistiche']));
     app.append(tab);
+    app.append(el('a', { class: 'btn btn-ghost btn-blocco', href: '#/confronto', style: 'margin-bottom:14px' },
+      ['🆚 Confronta due giocatori']));
 
     const card = (titolo, righe) => el('div', { class: 'card' }, [
       el('div', { class: 'card-titolo' }, [titolo]),
