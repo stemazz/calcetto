@@ -250,16 +250,18 @@ export async function andamentoVoti(userId) {
 // --------------------------------- BADGE ------------------------------------
 /** Dati grezzi necessari per calcolare i badge di un giocatore (vedi badges.js) */
 export async function datiBadge(giocatoreId) {
-  const [p, s, m] = await Promise.all([
+  const [p, s, m, mg] = await Promise.all([
     sb.from('matches').select('id').eq('stato', 'giocata').order('data'),
     sb.from('squadre').select('match_id').eq('giocatore_id', giocatoreId),
     sb.from('mvp_votes').select('match_id, candidato_id'),
+    sb.from('matches').select('id').eq('maglietta_iconica_id', giocatoreId),
   ]);
   if (p.error) throw new Error(messaggio(p.error));
   return {
     partiteGiocate: p.data || [],
     squadreGiocatore: s.data || [],
     mvpVoti: m.data || [],
+    maglietteVinte: (mg.data || []).length,
   };
 }
 
@@ -297,6 +299,11 @@ export const salvaMovimentoCassa = (id, data, importo, descrizione, custodeId, m
     p_custode: custodeId || null, p_match: matchId || null,
   });
 export const eliminaMovimentoCassa = (id) => rpc('elimina_movimento_cassa', { p_id: id });
+
+// --------------------- BADGE "MAGLIETTA PIÙ ICONICA" -----------------------
+/** Admin o tuttofare: assegna (o rimuove, con giocatoreId null) il premio simpatico della partita */
+export const assegnaMagliettaIconica = (matchId, giocatoreId) =>
+  rpc('assegna_maglietta_iconica', { p_match: matchId, p_giocatore: giocatoreId || null });
 
 // ---------------------------------- AUTH -----------------------------------
 export async function registra(email, password, meta) {

@@ -11,10 +11,11 @@
  * @param {{id:string}[]} p.partiteGiocate - TUTTE le partite con stato 'giocata', ordinate per data crescente
  * @param {{match_id:string}[]} p.squadreGiocatore - righe "squadre" di questo giocatore (una per partita a cui ha preso parte)
  * @param {{match_id:string, candidato_id:string}[]} p.mvpVoti - TUTTI i voti MVP di TUTTE le partite
+ * @param {number} [p.maglietteVinte] - quante volte ha vinto "maglietta più iconica" (vedi api.js -> datiBadge)
  * @param {string} p.giocatoreId
  * @returns {{icona:string, nome:string, descrizione:string, ottenuto:boolean}[]}
  */
-export function calcolaBadge({ stats, partiteGiocate, squadreGiocatore, mvpVoti, giocatoreId }) {
+export function calcolaBadge({ stats, partiteGiocate, squadreGiocatore, mvpVoti, maglietteVinte = 0, giocatoreId }) {
   const presenze = stats?.presenze || 0;
   const gol = stats?.gol || 0;
   const mediaVoti = Number(stats?.media_voti || 0);
@@ -55,5 +56,8 @@ export function calcolaBadge({ stats, partiteGiocate, squadreGiocatore, mvpVoti,
     { icona: '👑', nome: 'Fenomeno', descrizione: '3 premi MVP', ottenuto: mvpVinti >= 3 },
     { icona: '📈', nome: 'Top player', descrizione: 'Media voto ≥ 8 (min. 5 voti ricevuti)',
       ottenuto: numVoti >= 5 && mediaVoti >= 8 },
+    { icona: '👕', nome: 'Maglietta più iconica',
+      descrizione: maglietteVinte >= 1 ? `Premio vinto ${maglietteVinte} volta/e` : 'Vinci il premio per la maglietta più iconica di una partita',
+      ottenuto: maglietteVinte >= 1 },
   ];
 }
