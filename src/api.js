@@ -279,6 +279,24 @@ export const cambiaEmail = (userId, email) => rpc('cambia_email', { p_user: user
 export const promuoviAdmin = (userId, admin) => rpc('promuovi_admin', { p_user: userId, p_admin: admin });
 export const eliminaUtente = (userId) => rpc('elimina_utente', { p_user: userId });
 export const eliminaDatiDemo = () => rpc('elimina_dati_demo', {});
+export const setCassiere = (userId, val) => rpc('set_cassiere', { p_user: userId, p_val: val });
+
+// ---------------------------------- CASSA ----------------------------------
+/** Tutti i movimenti di cassa, con custode e partita collegata (se c'è) */
+export async function listaMovimentiCassa() {
+  const { data, error } = await sb.from('cassa_movimenti')
+    .select('id, data, importo, descrizione, custode:profiles!cassa_movimenti_custode_id_fkey(*), match:matches(id, data, luogo)')
+    .order('data', { ascending: false }).order('created_at', { ascending: false });
+  if (error) throw new Error(messaggio(error));
+  return data || [];
+}
+/** Crea (p_id null) o modifica un movimento di cassa */
+export const salvaMovimentoCassa = (id, data, importo, descrizione, custodeId, matchId) =>
+  rpc('salva_movimento_cassa', {
+    p_id: id || null, p_data: data, p_importo: importo, p_descrizione: descrizione,
+    p_custode: custodeId || null, p_match: matchId || null,
+  });
+export const eliminaMovimentoCassa = (id) => rpc('elimina_movimento_cassa', { p_id: id });
 
 // ---------------------------------- AUTH -----------------------------------
 export async function registra(email, password, meta) {

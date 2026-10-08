@@ -13,6 +13,7 @@ import { renderizzaDettaglio } from './pages/dettaglio.js';
 import { renderizzaVoti } from './pages/voti.js';
 import { renderizzaStatistiche } from './pages/statistiche.js';
 import { renderizzaConfronto } from './pages/confronto.js';
+import { renderizzaCassa } from './pages/cassa.js';
 import { renderizzaProfilo } from './pages/profilo.js';
 import { renderizzaAdmin } from './pages/admin.js';
 
@@ -84,6 +85,7 @@ async function instrada() {
       case 'voti':        await renderizzaVoti(app, parametro); break;
       case 'statistiche': await renderizzaStatistiche(app, parametro); break;
       case 'confronto':   await renderizzaConfronto(app); break;
+      case 'cassa':       await renderizzaCassa(app); break;
       case 'profilo':     await renderizzaProfilo(app, parametro); break;
       case 'reimposta':   await renderizzaProfilo(app, null, true); break; // nuova password
       case 'admin':       if (sonoAdmin()) await renderizzaAdmin(app, parametro);

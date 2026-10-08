@@ -31,6 +31,9 @@ export const profiloPerId = (id) => state.profili.get(id);
 /** L'utente collegato è admin? */
 export const sonoAdmin = () => !!state.profilo?.is_admin;
 
+/** L'utente collegato è admin o cassiere? (può scrivere movimenti di cassa) */
+export const sonoCassiere = () => !!state.profilo?.is_admin || !!state.profilo?.is_cassiere;
+
 /** Aggiorna un profilo nella cache (dopo una modifica) */
 export function aggiornaCacheProfilo(p) {
   if (p?.id) state.profili.set(p.id, p);
