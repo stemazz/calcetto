@@ -17,7 +17,7 @@ export async function renderizzaStatistiche(app, profiloId) {
 
   // Carica le tabelle grezze (piccole: ~20 giocatori, poche decine di partite)
   const [m, sq, gl, vt, mvpv, rc] = await Promise.all([
-    sb.from('matches').select('id,data,stato,gol_squadra_a,gol_squadra_b'),
+    sb.from('matches').select('id,data,stato,gol_squadra_a,gol_squadra_b,maglietta_iconica_id'),
     sb.from('squadre').select('giocatore_id,squadra,match_id'),
     sb.from('goals').select('giocatore_id,autogol,match_id'),
     sb.from('vista_voti_per_partita').select('match_id,data,votato_id,media_voto,num_voti'),
@@ -150,6 +150,18 @@ export async function renderizzaStatistiche(app, profiloId) {
       .map(([gid, n]) => ({ giocatore_id: gid, ...(profiloPerId(gid) || {}), vittorieMVP: n }))
       .sort((a, b) => b.vittorieMVP - a.vittorieMVP);
 
+    // Classifica "maglietta più iconica": un vincitore (opzionale) per
+    // partita salvato direttamente su matches.maglietta_iconica_id — stesso
+    // schema di conteggio della classifica MVP qui sopra.
+    const partiteMagliettaFiltrate = partite.filter(p =>
+      p.stato === 'giocata' && p.maglietta_iconica_id && (anno === null || annoDi(p.data) === anno));
+    const conteggioMaglietta = {};
+    for (const p of partiteMagliettaFiltrate)
+      conteggioMaglietta[p.maglietta_iconica_id] = (conteggioMaglietta[p.maglietta_iconica_id] || 0) + 1;
+    const classificaMaglietta = Object.entries(conteggioMaglietta)
+      .map(([gid, n]) => ({ giocatore_id: gid, ...(profiloPerId(gid) || {}), vittorieMaglietta: n }))
+      .sort((a, b) => b.vittorieMaglietta - a.vittorieMaglietta);
+
     const topVoti = lista.filter(s => s.idoneo && s.num_voti > 0).sort((a, b) => b.media_voti - a.media_voti);
     const cannonieri = lista.filter(s => s.gol > 0)
       .sort((a, b) => b.gol - a.gol || (b.gol / Math.max(b.presenze, 1)) - (a.gol / Math.max(a.presenze, 1)));
@@ -210,6 +222,7 @@ export async function renderizzaStatistiche(app, profiloId) {
     const maxGol = Math.max(1, ...cannonieri.map(s => s.gol), 0);
     const maxPresenze = Math.max(1, ...presenze.map(s => s.presenze), 0);
     const maxMVP = Math.max(1, ...classificaMVP.map(s => s.vittorieMVP), 0);
+    const maxMaglietta = Math.max(1, ...classificaMaglietta.map(s => s.vittorieMaglietta), 0);
 
     app.append(card(`⭐ Miglior giocatore (min. ${imp.min_partite_classifica} partite)`,
       topVoti.map((s, i) => riga(s, i, `${s.num_voti} voti · ${s.presenze} partite`,
@@ -251,6 +264,18 @@ export async function renderizzaStatistiche(app, profiloId) {
           barraRank((s.vittorieMVP / maxMVP) * 100),
         ]),
         el('span', { class: 'voto-badge voto-alto' }, [`🏆 ${s.vittorieMVP}`]),
+      ]))));
+
+    app.append(card('👕 Classifica maglietta più iconica',
+      classificaMaglietta.map((s, i) => el('div', { class: 'riga' }, [
+        el('span', { class: 'pos-medaglia' }, [MEDAGLIE[i] || `${i + 1}.`]),
+        avatar(s, 36),
+        el('div', { class: 'riga-testo' }, [
+          el('a', { class: 'riga-titolo', style: 'text-decoration:none;color:inherit',
+            href: `#/profilo/${s.giocatore_id}` }, [nomeProfilo(s)]),
+          barraRank((s.vittorieMaglietta / maxMaglietta) * 100),
+        ]),
+        el('span', { class: 'voto-badge voto-alto' }, [`👕 ${s.vittorieMaglietta}`]),
       ]))));
 
     const icone = { portiere: '🧤', difensore: '🛡️', centrocampista: '⚙️', attaccante: '🎯' };
