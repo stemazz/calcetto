@@ -10,7 +10,7 @@ import {
   gestisciVotazione, marcatoriPartita, risultatiPartita, impostaRisultati,
   tuttiVoti, eliminaVoto, salvaVotoAdmin,
   listaProfili, aggiornaProfilo, impostaAttivo, resetPassword, cambiaEmail,
-  promuoviAdmin, setTuttofare, eliminaUtente, eliminaDatiDemo,
+  promuoviAdmin, setTuttofare, setCassiere, eliminaUtente, eliminaDatiDemo,
   candidatiMVP, setCandidatiMVP,
   getImpostazioni, salvaImpostazioni,
   caricaFoto,
@@ -658,6 +658,16 @@ function rigaUtente(g, onAggiorna) {
             } catch (err) { toast(err.message, 'errore'); }
           }
         }, [g.is_tuttofare ? '🌟 Tuttofare ✓' : '🌟 Rendi tuttofare']),
+        el('button', {
+          style: `background:${g.is_cassiere ? '#0e7a3d;color:#fff' : ''};border:none;border-radius:9px;padding:4px 10px;font-size:12px;font-weight:800;cursor:pointer;min-height:32px`,
+          onclick: async () => {
+            try {
+              await setCassiere(g.id, !g.is_cassiere);
+              toast(g.is_cassiere ? '"Cassiere" rimosso.' : 'Ora è "cassiere"! 💰');
+              g.is_cassiere = !g.is_cassiere;
+            } catch (err) { toast(err.message, 'errore'); }
+          }
+        }, [g.is_cassiere ? '💰 Cassiere ✓' : '💰 Rendi cassiere']),
         el('button', { class: 'btn btn-pericolo btn-mini', onclick: async () => {
           if (!conferma(`Eliminare DEFINITIVAMENTE ${nomeProfilo(g)} e tutti i suoi dati?`)) return;
           try { await eliminaUtente(g.id); toast('Utente eliminato.');
@@ -675,6 +685,7 @@ function rigaUtente(g, onAggiorna) {
         el('div', { class: 'riga-titolo' }, [nomeProfilo(g) +
           (g.is_admin ? ' ⭐admin' : '') +
           (g.is_tuttofare ? ' 🌟tuttofare' : '') +
+          (g.is_cassiere ? ' 💰cassiere' : '') +
           (g.is_demo ? ' · demo' : '') + (!g.attivo ? ' · disattivo' : '')]),
         el('div', { class: 'riga-sub' }, [g.email]),
       ]),
