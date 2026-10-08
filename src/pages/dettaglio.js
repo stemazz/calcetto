@@ -2,10 +2,11 @@
 // DETTAGLIO PARTITA — squadre (N), risultato, marcatori, voti+commenti (anonimi),
 // MVP risultato, stato votazioni.
 // ============================================================================
-import { state } from '../state.js';
+import { state, sonoAdminOTuttofare, profiloPerId } from '../state.js';
 import {
   singolaPartita, iscrittiPartita, squadrePartita, marcatoriPartita, risultatiPartita,
   votiConCommentiPartita, medieVotiPartita, mioMVPScelto, risultatoMVP, candidatiMVP,
+  assegnaMagliettaIconica,
 } from '../api.js';
 import { el, fmtData, fmtScadenza, avatar, nomeProfilo, toast, spinner, vuoto, scaricaICS } from '../ui.js';
 
@@ -201,6 +202,47 @@ export async function renderizzaDettaglio(app, id) {
       ]),
       podio.length > 1 ? el('div', { class: 'riga-sub', style: 'margin-top:8px' },
         ['Top 3: ' + podio.map(p => `${nomeProfilo(p)} (${p.num_voti_mvp})`).join(' · ')]) : null,
+    ]));
+  }
+
+  // Maglietta più iconica — premio simpatico, un vincitore (opzionale) per
+  // partita; lo assegna admin o tuttofare tra chi era iscritto.
+  if (p.stato === 'giocata') {
+    const vincitoreMaglietta = p.maglietta_iconica_id ? profiloPerId(p.maglietta_iconica_id) : null;
+    const corpo = [];
+    if (vincitoreMaglietta) {
+      corpo.push(el('div', { class: 'riga' }, [
+        avatar(vincitoreMaglietta, 44),
+        el('div', { class: 'riga-testo' }, [
+          el('div', { class: 'riga-titolo' }, [nomeProfilo(vincitoreMaglietta)]),
+        ]),
+        el('span', { class: 'voto-badge voto-alto' }, ['👕']),
+      ]));
+    } else {
+      corpo.push(el('div', { class: 'vuoto' }, ['Non ancora assegnata per questa partita.']));
+    }
+    if (sonoAdminOTuttofare()) {
+      const selettore = el('select', { class: 'input' }, [
+        el('option', { value: '' }, ['— nessuno —']),
+        ...iscritti.map(g => el('option',
+          { value: g.id, ...(p.maglietta_iconica_id === g.id ? { selected: '' } : {}) },
+          [nomeProfilo(g)])),
+      ]);
+      const btn = el('button', { class: 'btn btn-primary btn-mini', style: 'margin-top:8px' }, ['Salva']);
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await assegnaMagliettaIconica(p.id, selettore.value || null);
+          toast('Premio aggiornato!');
+          p.maglietta_iconica_id = selettore.value || null;
+          renderizzaDettaglio(app, id);
+        } catch (e) { toast(e.message, 'errore'); btn.disabled = false; }
+      });
+      corpo.push(el('div', { style: 'margin-top:10px' }, [selettore, btn]));
+    }
+    app.append(el('div', { class: 'card' }, [
+      el('div', { class: 'card-titolo' }, ['👕 Maglietta più iconica']),
+      ...corpo,
     ]));
   }
 

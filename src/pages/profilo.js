@@ -68,9 +68,11 @@ export async function renderizzaProfilo(app, profiloId, soloPassword = false) {
       const badge = calcolaBadge({ stats: s, giocatoreId: id, ...bd });
       app.append(el('div', { class: 'card' }, [
         el('div', { class: 'card-titolo' }, ['🏅 Badge']),
+        el('div', { class: 'riga-sub', style: 'margin-bottom:6px' }, ['Tocca un badge per leggerne la descrizione']),
         el('div', { class: 'badge-grid' }, badge.map(b => el('div', {
           class: 'badge-item' + (b.ottenuto ? ' badge-ottenuto' : ''),
-          title: b.descrizione,
+          title: b.descrizione, // hover su desktop
+          onclick: () => toast(`${b.ottenuto ? b.icona : '🔒'} ${b.nome} — ${b.descrizione}`),
         }, [
           el('div', { class: 'badge-icona' }, [b.icona]),
           el('div', { class: 'badge-nome' }, [b.nome]),
