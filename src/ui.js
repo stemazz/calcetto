@@ -224,8 +224,23 @@ export function testoInvitoPartita(p) {
   return righe.join('\n');
 }
 
-/** Apre WhatsApp (app su mobile, Web su desktop) con il testo già pronto:
- *  l'utente scegli a chi/quale gruppo inviarlo con un tap. */
+/** Apre WhatsApp (app su mobile, Web/app su desktop) con il testo già pronto:
+ *  l'utente scegli a chi/quale gruppo inviarlo con un tap.
+ *  NOTA: usiamo un vero <a href> cliccato via codice invece di window.open().
+ *  Il sintomo riportato (emoji -> "�" da computer e dall'app installata sul
+ *  telefono, ma corrette nel browser mobile) indica che il problema non è
+ *  nella codifica del testo (già verificata byte per byte), ma in COME il
+ *  link viene passato a WhatsApp: a seconda del contesto (popup via script,
+ *  protocollo registrato dall'app desktop/PWA, ecc.) chi riceve il link può
+ *  prendere un percorso diverso per leggerlo. Un elemento <a> vero e
+ *  cliccato è il modo più "standard" di aprire un link e quello con più
+ *  probabilità di essere gestito allo stesso modo ovunque. */
 export function condividiWhatsApp(testo) {
-  window.open(`https://wa.me/?text=${encodeURIComponent(testo)}`, '_blank');
+  const a = el('a', {
+    href: `https://api.whatsapp.com/send?text=${encodeURIComponent(testo)}`,
+    target: '_blank', rel: 'noopener',
+  });
+  document.body.append(a);
+  a.click();
+  a.remove();
 }
