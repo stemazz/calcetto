@@ -56,10 +56,13 @@ export async function renderizzaDettaglio(app, id) {
         class: 'btn btn-ghost btn-mini', style: 'background:rgba(255,255,255,.2);color:#fff',
         onclick: () => scaricaICS(p),
       }, ['📆 Aggiungi al calendario']),
-      el('button', {
+      // "Condividi su WhatsApp" serve per invitare a iscriversi: una volta
+      // chiusa la partita con il risultato (stato 'giocata') non ha più
+      // senso invitare nessuno, quindi il pulsante sparisce da solo.
+      p.stato === 'programmata' ? el('button', {
         class: 'btn btn-ghost btn-mini', style: 'background:rgba(255,255,255,.2);color:#fff',
         onclick: () => condividiWhatsApp(testoInvitoPartita(p)),
-      }, ['📲 Condividi su WhatsApp']),
+      }, ['📲 Condividi su WhatsApp']) : null,
     ]) : null,
   ]));
 

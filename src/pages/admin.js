@@ -122,7 +122,7 @@ function rigaGestionePartita(p, contenuto) {
         el('div', { class: 'riga-sub' },
           [(p.luogo || '—') + ` · ${p.num_squadre || 2} squadre × ${p.giocatori_per_squadra || 5}`]),
       ]),
-      p.stato !== 'annullata' ? el('button', { class: 'btn btn-ghost btn-mini',
+      p.stato === 'programmata' ? el('button', { class: 'btn btn-ghost btn-mini',
         title: 'Condividi su WhatsApp',
         onclick: () => condividiWhatsApp(testoInvitoPartita(p)),
       }, ['📲']) : null,
