@@ -193,3 +193,29 @@ export function scaricaICS(p) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
+
+// ============================================================================
+// Condividi su WhatsApp — "wa.me/?text=" apre la rubrica/i gruppi di WhatsApp
+// con il messaggio già scritto, pronto da inviare con un tap (nessun account
+// business, nessun costo, nessun numero: è solo un link speciale).
+// ============================================================================
+
+/** Testo pronto per invitare all'iscrizione a una partita */
+export function testoInvitoPartita(p) {
+  const link = `${location.origin}${location.pathname}#/partita/${p.id}`;
+  const righe = [
+    '⚽ Nuova partita di calcetto!',
+    `📅 ${fmtData(p.data)} alle ${p.ora.slice(0, 5)}`,
+    p.luogo ? `📍 ${p.luogo}` : null,
+    `👥 Posti disponibili: ${p.max_giocatori}`,
+    '',
+    `Iscriviti qui 👉 ${link}`,
+  ].filter(Boolean);
+  return righe.join('\n');
+}
+
+/** Apre WhatsApp (app su mobile, Web su desktop) con il testo già pronto:
+ *  l'utente scegli a chi/quale gruppo inviarlo con un tap. */
+export function condividiWhatsApp(testo) {
+  window.open(`https://wa.me/?text=${encodeURIComponent(testo)}`, '_blank');
+}
