@@ -8,7 +8,10 @@ import {
   votiConCommentiPartita, medieVotiPartita, mioMVPScelto, risultatoMVP, candidatiMVP,
   assegnaMagliettaIconica,
 } from '../api.js';
-import { el, fmtData, fmtScadenza, avatar, nomeProfilo, toast, spinner, vuoto, scaricaICS } from '../ui.js';
+import {
+  el, fmtData, fmtScadenza, avatar, nomeProfilo, toast, spinner, vuoto, scaricaICS,
+  testoInvitoPartita, condividiWhatsApp,
+} from '../ui.js';
 
 const COLORI_SQUADRA = {
   A: { bg: '#e9f2fc', fg: '#2273d2', nome: 'Squadra A' },
@@ -48,10 +51,16 @@ export async function renderizzaDettaglio(app, id) {
       el('span', { class: 'badge', style: 'background:rgba(255,255,255,.2);color:#fff' },
         [`🧢 ${p.num_squadre || 2} sq × ${p.giocatori_per_squadra || 5}`]),
     ]),
-    p.stato !== 'annullata' ? el('button', {
-      class: 'btn btn-ghost btn-mini', style: 'margin-top:10px;background:rgba(255,255,255,.2);color:#fff',
-      onclick: () => scaricaICS(p),
-    }, ['📆 Aggiungi al calendario']) : null,
+    p.stato !== 'annullata' ? el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px' }, [
+      el('button', {
+        class: 'btn btn-ghost btn-mini', style: 'background:rgba(255,255,255,.2);color:#fff',
+        onclick: () => scaricaICS(p),
+      }, ['📆 Aggiungi al calendario']),
+      el('button', {
+        class: 'btn btn-ghost btn-mini', style: 'background:rgba(255,255,255,.2);color:#fff',
+        onclick: () => condividiWhatsApp(testoInvitoPartita(p)),
+      }, ['📲 Condividi su WhatsApp']),
+    ]) : null,
   ]));
 
   // Risultato e marcatori

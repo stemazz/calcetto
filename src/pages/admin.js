@@ -17,7 +17,7 @@ import {
 } from '../api.js';
 import {
   el, avatar, nomeProfilo, toast, fmtData, fmtScadenza, oggiISO,
-  selectVoto, ridimensiona, anteprimaImg,
+  selectVoto, ridimensiona, anteprimaImg, testoInvitoPartita, condividiWhatsApp,
 } from '../ui.js';
 
 export async function renderizzaAdmin(app) {
@@ -122,6 +122,10 @@ function rigaGestionePartita(p, contenuto) {
         el('div', { class: 'riga-sub' },
           [(p.luogo || '—') + ` · ${p.num_squadre || 2} squadre × ${p.giocatori_per_squadra || 5}`]),
       ]),
+      p.stato !== 'annullata' ? el('button', { class: 'btn btn-ghost btn-mini',
+        title: 'Condividi su WhatsApp',
+        onclick: () => condividiWhatsApp(testoInvitoPartita(p)),
+      }, ['📲']) : null,
       badge, apri,
     ]),
     dettaglio,
