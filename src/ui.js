@@ -200,16 +200,26 @@ export function scaricaICS(p) {
 // business, nessun costo, nessun numero: è solo un link speciale).
 // ============================================================================
 
+// Emoji scritte come escape \u{...} invece che come carattere letterale nel
+// file: a runtime producono lo STESSO identico testo, ma il file .js resta
+// fatto di soli caratteri ASCII. Questo lo rende immune al bug più comune
+// delle "�" al posto delle emoji: un editor o uno strumento che risalva il
+// file con una codifica diversa da UTF-8 (es. ANSI/Windows-1252 su Windows)
+// spezza i caratteri multi-byte delle emoji scritte letteralmente, ma non
+// può rompere un escape che è già puro testo ASCII.
+const PALLONE = '\u{26BD}', CALENDARIO = '\u{1F4C5}', PIN = '\u{1F4CD}',
+      PERSONE = '\u{1F465}', PUNTA_DITO = '\u{1F449}';
+
 /** Testo pronto per invitare all'iscrizione a una partita */
 export function testoInvitoPartita(p) {
   const link = `${location.origin}${location.pathname}#/partita/${p.id}`;
   const righe = [
-    '⚽ Nuova partita di calcetto!',
-    `📅 ${fmtData(p.data)} alle ${p.ora.slice(0, 5)}`,
-    p.luogo ? `📍 ${p.luogo}` : null,
-    `👥 Posti disponibili: ${p.max_giocatori}`,
+    `${PALLONE} Nuova partita di calcetto!`,
+    `${CALENDARIO} ${fmtData(p.data)} alle ${p.ora.slice(0, 5)}`,
+    p.luogo ? `${PIN} ${p.luogo}` : null,
+    `${PERSONE} Posti disponibili: ${p.max_giocatori}`,
     '',
-    `Iscriviti qui 👉 ${link}`,
+    `Iscriviti qui ${PUNTA_DITO} ${link}`,
   ].filter(Boolean);
   return righe.join('\n');
 }
