@@ -21,6 +21,20 @@ const app = document.getElementById('app');
 const header = document.getElementById('header');
 const nav = document.getElementById('bottom-nav');
 
+// FIX RECUPERO PASSWORD: il link che Supabase manda per email, dopo la
+// verifica, reindirizza al nostro redirectTo (#/reimposta) MA aggiungendo
+// il token di sessione nello stesso "#" che il nostro router usa per le
+// rotte — il risultato è qualcosa come "#/reimposta&access_token=...
+// &type=recovery...". Il parsing normale di instrada() qui sotto si
+// aspetta "pagina" o "pagina/parametro" e non riconosce questa stringa,
+// finendo nel caso "default" che rimanda tutti a Home: la sessione di
+// recupero viene creata correttamente, ma l'utente non vede MAI la
+// schermata per scegliere la nuova password — sembra che "non succeda
+// niente" cliccando il link dell'email.
+// La soluzione: leggere l'hash SUBITO, prima che qualunque cosa lo
+// modifichi, e usarlo per forzare la rotta "reimposta" una volta sola.
+let recuperoPasswordInCorso = location.hash.includes('type=recovery');
+
 document.getElementById('btn-esci').addEventListener('click', async () => {
   await sb.auth.signOut();
   location.hash = '';
@@ -74,7 +88,18 @@ async function instrada() {
   if (!state.sessione) { mostraNav(false); renderizzaAuth(app); return; }
   mostraNav(true);
   document.getElementById('btn-admin').hidden = !sonoAdmin();
-  const route = (location.hash.replace(/^#\//, '') || 'home');
+  let route;
+  if (recuperoPasswordInCorso) {
+    // Si consuma una volta sola: non deve bloccare la navigazione normale
+    // dopo che l'utente ha impostato la nuova password.
+    recuperoPasswordInCorso = false;
+    route = 'reimposta';
+    // Pulisce la barra degli indirizzi dal token (non deve restare visibile
+    // né rischiare di essere riusato), senza ricaricare la pagina.
+    history.replaceState(null, '', location.pathname + '#/reimposta');
+  } else {
+    route = (location.hash.replace(/^#\//, '') || 'home');
+  }
   const [pagina, parametro] = route.split('/');
   app.innerHTML = '';
   try {
