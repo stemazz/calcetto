@@ -3,11 +3,13 @@
 // ============================================================================
 import { state } from '../state.js';
 import {
-  listaPartite, iscriviti, cancellati, mieIscrizioni, iscrittiPartita,
+  listaPartite, iscriviti, cancellati, mieIscrizioni, iscrittiPartita, tutteLeFotoPartite,
 } from '../api.js';
 import {
   el, fmtData, fmtMese, toast, spinner, vuoto, oggiISO,
 } from '../ui.js';
+
+const FOTO_PER_PAGINA = 12;
 
 const NOMI_GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno',
@@ -16,7 +18,9 @@ const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno',
 export async function renderizzaCalendario(app) {
   app.append(spinner());
   const userId = state.sessione.user.id;
-  const [partite, mie] = await Promise.all([listaPartite(), mieIscrizioni(userId)]);
+  const [partite, mie, foto] = await Promise.all([
+    listaPartite(), mieIscrizioni(userId), tutteLeFotoPartite().catch(() => []),
+  ]);
   app.innerHTML = '';
   app.append(el('h2', { style: 'margin:4px 0 12px;font-size:20px' }, ['📅 Calendario']));
 
@@ -66,6 +70,46 @@ export async function renderizzaCalendario(app) {
 
   app.append(sezionePartite('🔜 Prossime partite', future, mie, userId));
   app.append(sezionePartite('🕓 Partite passate', passate, mie, userId));
+  if (foto.length) app.append(sezioneFoto(foto));
+}
+
+/** Galleria di tutte le foto di tutte le partite, senza dover entrare in
+ *  ciascuna singolarmente. Mostra le più recenti, con "Vedi altre" per
+ *  caricarne a blocchi se diventano tante. Il tocco sulla foto apre
+ *  l'originale; l'etichetta sotto porta al dettaglio della partita. */
+function sezioneFoto(foto) {
+  let visibili = FOTO_PER_PAGINA;
+  const griglia = el('div', { class: 'foto-partita-grid' });
+  const contAltre = el('div');
+
+  function disegnaGriglia() {
+    griglia.innerHTML = '';
+    griglia.append(...foto.slice(0, visibili).map(f => el('div', {}, [
+      el('div', { class: 'foto-partita-cella' }, [
+        el('a', { href: f.url, target: '_blank', rel: 'noopener' }, [
+          el('img', { class: 'foto-partita-img', src: f.url, loading: 'lazy' }),
+        ]),
+      ]),
+      el('a', {
+        class: 'riga-sub', style: 'display:block;text-align:center;margin-top:4px;text-decoration:none',
+        href: `#/partita/${f.match_id}`,
+      }, [f.matches?.data ? fmtData(f.matches.data) : '']),
+    ])));
+    contAltre.innerHTML = '';
+    if (visibili < foto.length) {
+      contAltre.append(el('button', {
+        class: 'btn btn-ghost btn-mini', style: 'margin-top:10px',
+        onclick: () => { visibili += FOTO_PER_PAGINA; disegnaGriglia(); },
+      }, [`Vedi altre (${foto.length - visibili} rimanenti)`]));
+    }
+  }
+  disegnaGriglia();
+
+  return el('div', { class: 'card' }, [
+    el('div', { class: 'card-titolo' }, ['📷 Foto delle partite']),
+    griglia,
+    contAltre,
+  ]);
 }
 
 function sezionePartite(titolo, lista, mie, userId) {

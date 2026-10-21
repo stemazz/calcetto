@@ -352,6 +352,15 @@ export async function caricaFotoPartita(matchId, userId, fileOrBlob) {
   const id = await rpc('aggiungi_foto_partita', { p_match: matchId, p_url: url });
   return { id, url };
 }
+/** Tutte le foto di tutte le partite, più recenti prima, con data/id partita
+ *  (per la galleria aggregata in Calendario, senza dover aprire ogni partita) */
+export async function tutteLeFotoPartite() {
+  const { data, error } = await sb.from('foto_partita')
+    .select('id, url, created_at, match_id, matches(data,luogo)')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(messaggio(error));
+  return data || [];
+}
 /** Elimina una foto (chi l'ha caricata, o admin): file + riga */
 export async function eliminaFotoPartita(id, url) {
   try {
