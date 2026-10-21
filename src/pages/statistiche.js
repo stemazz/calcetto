@@ -306,7 +306,9 @@ export async function renderizzaStatistiche(app, profiloId) {
         el('div', { class: 'riga-testo' }, [
           el('div', { class: 'riga-titolo' }, [s.titolo]),
           el('div', { class: 'riga-sub' }, [
-            s.chiuso_at ? `Chiuso il ${fmtData(s.chiuso_at)}` : '',
+            // chiuso_at è un timestamptz ("2026-10-21T09:15:32+00:00"), ma
+            // fmtData si aspetta una data pura ("2026-10-21"): da qui il bug.
+            s.chiuso_at ? `Chiuso il ${fmtData(s.chiuso_at.slice(0, 10))}` : '',
           ]),
           vincitori.length
             ? el('div', { style: 'margin-top:6px;display:flex;flex-wrap:wrap;gap:8px' },
