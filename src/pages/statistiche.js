@@ -6,7 +6,7 @@
 // ============================================================================
 import { state, profiloPerId } from '../state.js';
 import { sb } from '../supabase.js';
-import { getImpostazioni } from '../api.js';
+import { getImpostazioni, listaSondaggi, risultatiSondaggio } from '../api.js';
 import { el, avatar, nomeProfilo, spinner, vuoto, fmtData } from '../ui.js';
 
 const MEDAGLIE = ['🥇', '🥈', '🥉'];
@@ -31,6 +31,22 @@ export async function renderizzaStatistiche(app, profiloId) {
   const partite = m.data || [], squadre = sq.data || [], gol = gl.data || [], voti = vt.data || [];
   const mvpVoti = mvpv.data || [];
   const risultati = rc.data || [];
+
+  // Storico premi: solo i sondaggi già chiusi (quelli aperti non mostrano
+  // risultati qui, stessa scelta fatta in Cassa e Premi). Non dipende dal
+  // filtro stagione qui sotto: i premi sono eventi a sé, non legati alle
+  // partite di un anno specifico.
+  const sondaggi = await listaSondaggi().catch(() => []);
+  const sondaggiChiusi = sondaggi.filter(s => s.stato === 'chiuso')
+    .sort((a, b) => (b.chiuso_at || '').localeCompare(a.chiuso_at || ''));
+  const storicoPremi = await Promise.all(sondaggiChiusi.map(async (s) => {
+    const ris = await risultatiSondaggio(s.id).catch(() => []);
+    if (!ris.length) return { sondaggio: s, vincitori: [] };
+    const max = Math.max(...ris.map(r => r.num_voti));
+    const vincitori = ris.filter(r => r.num_voti === max);
+    return { sondaggio: s, vincitori };
+  }));
+
   app.innerHTML = '';
 
   // ------------------ Calcolo statistiche per stagione ------------------
@@ -281,6 +297,29 @@ export async function renderizzaStatistiche(app, profiloId) {
     const icone = { portiere: '🧤', difensore: '🛡️', centrocampista: '⚙️', attaccante: '🎯' };
     app.append(card('🧤 Migliori per ruolo', Object.entries(perRuolo).map(([ruolo, s]) =>
       riga(s, -1, `${icone[ruolo]} ${ruolo}`, s.media_voti.toFixed(2)))));
+
+    // Storico premi: non dipende dalla stagione selezionata (i sondaggi non
+    // sono legati a un anno di partite), quindi i dati sono già pronti da
+    // prima di disegna() e qui si limita a renderizzarli.
+    app.append(card('📜 Storico premi', storicoPremi.map(({ sondaggio: s, vincitori }) =>
+      el('div', { class: 'riga' }, [
+        el('div', { class: 'riga-testo' }, [
+          el('div', { class: 'riga-titolo' }, [s.titolo]),
+          el('div', { class: 'riga-sub' }, [
+            s.chiuso_at ? `Chiuso il ${fmtData(s.chiuso_at)}` : '',
+          ]),
+          vincitori.length
+            ? el('div', { style: 'margin-top:6px;display:flex;flex-wrap:wrap;gap:8px' },
+                vincitori.map(v => {
+                  const p = profiloPerId(v.votato_id);
+                  return el('a', {
+                    class: 'badge badge-blu', style: 'display:flex;align-items:center;gap:4px;text-decoration:none;color:inherit',
+                    href: `#/profilo/${v.votato_id}`,
+                  }, [avatar(p, 20), `🏆 ${p ? nomeProfilo(p) : '—'} (${v.num_voti})`]);
+                }))
+            : el('div', { class: 'riga-sub', style: 'margin-top:4px' }, ['Nessun voto']),
+        ]),
+      ]))));
   }
 
   disegna();
