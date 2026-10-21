@@ -1,20 +1,28 @@
 // ============================================================================
-// CASSA — fondo comune: resti raccolti a fine partita, destinati a premi.
-// Chiunque può vedere i movimenti (trasparenza); solo admin/cassiere scrivono.
+// CASSA E PREMI — fondo comune (movimenti) + sondaggi custom per decidere
+// chi premiare. Movimenti: chiunque vede (trasparenza), admin/cassiere
+// scrivono. Sondaggi: l'admin li crea/apre/chiude, tutti i giocatori attivi
+// votano un profilo qualsiasi (anche allenatore/cassiere/admin).
 // ============================================================================
-import { state, sonoCassiere, sonoAdmin } from '../state.js';
-import { listaMovimentiCassa, salvaMovimentoCassa, eliminaMovimentoCassa, listaPartite } from '../api.js';
+import { state, sonoCassiere, sonoAdmin, profiloPerId } from '../state.js';
+import {
+  listaMovimentiCassa, salvaMovimentoCassa, eliminaMovimentoCassa, listaPartite,
+  listaSondaggi, creaSondaggio, votaSondaggio, chiudiSondaggio, riapriSondaggio,
+  eliminaSondaggio, mioVotoSondaggio, risultatiSondaggio,
+} from '../api.js';
 import { el, fmtData, avatar, nomeProfilo, toast, spinner, vuoto, oggiISO } from '../ui.js';
 
 function conferma(msg) { return window.confirm(msg); }
 
 export async function renderizzaCassa(app) {
   app.append(spinner());
+  const userId = state.sessione.user.id;
   const puoScrivere = sonoCassiere();
-  const [movimenti, profili, partite] = await Promise.all([
+  const [movimenti, profili, partite, sondaggi] = await Promise.all([
     listaMovimentiCassa(),
     [...state.profili.values()].sort((a, b) => (a.nome || '').localeCompare(b.nome || '')),
     listaPartite(),
+    listaSondaggi(),
   ]);
   app.innerHTML = '';
 
@@ -32,7 +40,7 @@ export async function renderizzaCassa(app) {
     .sort((a, b) => b.saldo - a.saldo);
 
   app.append(el('div', { class: 'hero' }, [
-    el('div', { class: 'hero-etichetta' }, ['💰 Cassa comune']),
+    el('div', { class: 'hero-etichetta' }, ['💰 Cassa e Premi']),
     el('div', { class: 'hero-data', style: 'font-size:28px' }, [`${totale.toFixed(2)} €`]),
     el('div', { class: 'hero-luogo' }, ['Resti raccolti a fine partita, destinati a premi']),
   ]));
@@ -60,6 +68,129 @@ export async function renderizzaCassa(app) {
     el('div', { class: 'card-titolo' }, ['📜 Movimenti']),
     movimenti.length ? movimenti.map(m => rigaMovimento(m)) : vuoto('Ancora nessun movimento registrato.'),
   ]));
+
+  // ---------------------------- PREMI (sondaggi) ----------------------------
+  app.append(el('h2', { style: 'margin:22px 0 4px;font-size:18px' }, ['🏆 Premi']));
+  app.append(el('div', { class: 'riga-sub', style: 'margin-bottom:10px' },
+    ['Sondaggi per decidere chi premiare con i soldi della cassa.']));
+
+  if (sonoAdmin()) app.append(formNuovoSondaggio());
+
+  const boxSondaggi = el('div');
+  app.append(boxSondaggi);
+  sondaggi.length
+    ? sondaggi.forEach(s => boxSondaggi.append(cardSondaggio(s)))
+    : boxSondaggi.append(el('div', { class: 'card' }, [vuoto('Nessun sondaggio ancora creato.')]));
+
+  function formNuovoSondaggio() {
+    const fTitolo = el('input', { class: 'input', placeholder: 'es. Premio del mese — Ottobre' });
+    const fDescrizione = el('input', { class: 'input', placeholder: 'Descrizione (facoltativa)' });
+    const btn = el('button', { class: 'btn btn-primary btn-mini' }, ['➕ Crea e apri sondaggio']);
+    btn.addEventListener('click', async () => {
+      if (!fTitolo.value.trim()) { toast('Scrivi un titolo', 'errore'); return; }
+      btn.disabled = true;
+      try {
+        await creaSondaggio(fTitolo.value.trim(), fDescrizione.value.trim());
+        toast('Sondaggio creato e aperto!');
+        renderizzaCassa(app);
+      } catch (e) { toast(e.message, 'errore'); btn.disabled = false; }
+    });
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'card-titolo' }, ['✏️ Nuovo sondaggio']),
+      el('div', { class: 'form' }, [
+        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Titolo']), fTitolo]),
+        el('div', { class: 'campo' }, [el('label', { class: 'campo-label' }, ['Descrizione']), fDescrizione]),
+        btn,
+      ]),
+    ]);
+  }
+
+  function cardSondaggio(s) {
+    const box = el('div', { class: 'card', style: s.stato === 'aperto' ? 'border-left:4px solid var(--arancio)' : '' });
+    const corpo = el('div');
+    box.append(
+      el('div', { class: 'card-titolo' }, [
+        s.titolo,
+        ' ',
+        el('span', { class: 'badge', style: s.stato === 'aperto'
+          ? 'background:#fff3e0;color:var(--arancio)' : 'background:#eee;color:#666' },
+          [s.stato === 'aperto' ? 'APERTO' : 'CHIUSO']),
+      ]),
+      s.descrizione ? el('div', { class: 'riga-sub', style: 'margin-bottom:8px' }, [s.descrizione]) : null,
+      corpo,
+    );
+    aggiorna();
+    return box;
+
+    async function aggiorna() {
+      corpo.innerHTML = '';
+      corpo.append(spinner());
+      const [mioVoto, risultati] = await Promise.all([
+        mioVotoSondaggio(s.id, userId).catch(() => null),
+        (sonoAdmin() || s.stato === 'chiuso') ? risultatiSondaggio(s.id).catch(() => []) : Promise.resolve(null),
+      ]);
+      corpo.innerHTML = '';
+
+      if (s.stato === 'aperto') {
+        const select = el('select', { class: 'input' }, [
+          el('option', { value: '' }, ['— scegli chi premiare —']),
+          ...profili.map(pr => el('option',
+            { value: pr.id, ...(mioVoto === pr.id ? { selected: '' } : {}) },
+            [nomeProfilo(pr)])),
+        ]);
+        const btnVota = el('button', { class: 'btn btn-primary btn-mini' }, [mioVoto ? '✓ Cambia voto' : 'Vota']);
+        btnVota.addEventListener('click', async () => {
+          if (!select.value) { toast('Scegli un profilo', 'errore'); return; }
+          btnVota.disabled = true;
+          try { await votaSondaggio(s.id, select.value); toast('Voto registrato!'); aggiorna(); }
+          catch (e) { toast(e.message, 'errore'); btnVota.disabled = false; }
+        });
+        corpo.append(el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:stretch;margin-bottom:8px' },
+          [select, btnVota]));
+        if (mioVoto) corpo.append(el('div', { class: 'riga-sub' },
+          [`Hai votato: ${nomeProfilo(profiloPerId(mioVoto))} (puoi cambiare idea finché resta aperto)`]));
+      }
+
+      // Risultati: sempre visibili a chiuso; live solo per l'admin se aperto
+      // (per non influenzare chi non ha ancora votato).
+      if (risultati && risultati.length) {
+        const max = Math.max(...risultati.map(r => r.num_voti));
+        corpo.append(el('div', { style: 'margin-top:6px' }, risultati.map((r, i) => {
+          const pr = profiloPerId(r.votato_id);
+          return el('div', { class: 'riga', style: 'padding:5px 0;border:none' }, [
+            el('span', { style: 'font-size:16px' }, [i === 0 && r.num_voti === max ? '🏆' : `${i + 1}.`]),
+            avatar(pr, 30),
+            el('span', { style: 'font-size:13.5px;font-weight:600;flex:1' }, [pr ? nomeProfilo(pr) : '—']),
+            el('span', { class: 'badge' }, [`${r.num_voti} voti`]),
+          ]);
+        })));
+      } else if (risultati) {
+        corpo.append(el('div', { class: 'vuoto' }, ['Ancora nessun voto.']));
+      }
+
+      if (sonoAdmin()) {
+        const azioni = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px' });
+        if (s.stato === 'aperto') {
+          azioni.append(el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
+            if (!conferma('Chiudere il sondaggio? I voti resteranno bloccati.')) return;
+            try { await chiudiSondaggio(s.id); toast('Sondaggio chiuso.'); s.stato = 'chiuso'; renderizzaCassa(app); }
+            catch (e) { toast(e.message, 'errore'); }
+          }}, ['🔒 Chiudi sondaggio']));
+        } else {
+          azioni.append(el('button', { class: 'btn btn-ghost btn-mini', onclick: async () => {
+            try { await riapriSondaggio(s.id); toast('Sondaggio riaperto.'); s.stato = 'aperto'; renderizzaCassa(app); }
+            catch (e) { toast(e.message, 'errore'); }
+          }}, ['🔓 Riapri']));
+        }
+        azioni.append(el('button', { class: 'btn btn-pericolo btn-mini', onclick: async () => {
+          if (!conferma('Eliminare definitivamente questo sondaggio e tutti i voti?')) return;
+          try { await eliminaSondaggio(s.id); toast('Sondaggio eliminato.'); box.remove(); }
+          catch (e) { toast(e.message, 'errore'); }
+        }}, ['🗑 Elimina']));
+        corpo.append(azioni);
+      }
+    }
+  }
 
   function selettorePartita(valoreIniziale) {
     const s = el('select', { class: 'input' }, [

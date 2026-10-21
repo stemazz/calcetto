@@ -300,6 +300,71 @@ export const salvaMovimentoCassa = (id, data, importo, descrizione, custodeId, m
   });
 export const eliminaMovimentoCassa = (id) => rpc('elimina_movimento_cassa', { p_id: id });
 
+// ------------------------------ SONDAGGI / PREMI ---------------------------
+export async function listaSondaggi() {
+  const { data, error } = await sb.from('sondaggi').select('*').order('created_at', { ascending: false });
+  if (error) throw new Error(messaggio(error));
+  return data || [];
+}
+/** Admin: crea un sondaggio custom (già aperto) */
+export const creaSondaggio = (titolo, descrizione) =>
+  rpc('crea_sondaggio', { p_titolo: titolo, p_descrizione: descrizione || '' });
+/** Qualsiasi giocatore attivo: vota (o cambia voto) finché il sondaggio è aperto */
+export const votaSondaggio = (sondaggioId, votatoId) =>
+  rpc('vota_sondaggio', { p_sondaggio: sondaggioId, p_votato: votatoId });
+export const chiudiSondaggio = (id) => rpc('chiudi_sondaggio', { p_sondaggio: id });
+export const riapriSondaggio = (id) => rpc('riapri_sondaggio', { p_sondaggio: id });
+export const eliminaSondaggio = (id) => rpc('elimina_sondaggio', { p_sondaggio: id });
+/** Il proprio voto per un sondaggio (null se non ancora votato) */
+export async function mioVotoSondaggio(sondaggioId, userId) {
+  const { data, error } = await sb.from('sondaggio_voti').select('votato_id')
+    .eq('sondaggio_id', sondaggioId).eq('votante_id', userId).maybeSingle();
+  if (error && error.code !== 'PGRST116') throw new Error(messaggio(error));
+  return data?.votato_id || null;
+}
+/** Risultati aggregati (conteggio per candidato, non chi ha votato chi) */
+export async function risultatiSondaggio(sondaggioId) {
+  const { data, error } = await sb.from('vista_risultati_sondaggio')
+    .select('votato_id, num_voti').eq('sondaggio_id', sondaggioId).order('num_voti', { ascending: false });
+  if (error) throw new Error(messaggio(error));
+  return data || [];
+}
+
+// ----------------------------- FOTO PARTITA ---------------------------------
+export async function fotoPartita(matchId) {
+  const { data, error } = await sb.from('foto_partita')
+    .select('id, url, created_at, caricato_da, profilo:profiles(*)')
+    .eq('match_id', matchId).order('created_at', { ascending: false });
+  if (error) throw new Error(messaggio(error));
+  return data || [];
+}
+/** Carica una foto di gruppo per la partita (chi ha partecipato, o admin) */
+export async function caricaFotoPartita(matchId, userId, fileOrBlob) {
+  if (!fileOrBlob) throw new Error('file mancante');
+  const bucketId = 'foto-partite';
+  const percorso = `${matchId}/${Date.now()}-${userId}.jpg`;
+  const { error } = await sb.storage.from(bucketId).upload(percorso, fileOrBlob, {
+    upsert: false, cacheControl: '3600', contentType: 'image/jpeg',
+  });
+  if (error) throw new Error(messaggio(error));
+  const { data: pub } = sb.storage.from(bucketId).getPublicUrl(percorso);
+  const url = `${pub.publicUrl}?v=${Date.now()}`;
+  const id = await rpc('aggiungi_foto_partita', { p_match: matchId, p_url: url });
+  return { id, url };
+}
+/** Elimina una foto (chi l'ha caricata, o admin): file + riga */
+export async function eliminaFotoPartita(id, url) {
+  try {
+    const marker = '/foto-partite/';
+    const idx = url.indexOf(marker);
+    if (idx !== -1) {
+      const percorso = url.slice(idx + marker.length).split('?')[0];
+      await sb.storage.from('foto-partite').remove([percorso]);
+    }
+  } catch { /* se il file non si elimina, la riga va eliminata comunque */ }
+  await rpc('elimina_foto_partita', { p_id: id });
+}
+
 // --------------------- BADGE "MAGLIETTA PIÙ ICONICA" -----------------------
 /** Admin o tuttofare: assegna (o rimuove, con giocatoreId null) il premio simpatico della partita */
 export const assegnaMagliettaIconica = (matchId, giocatoreId) =>
@@ -316,8 +381,20 @@ export async function accedi(email, password) {
 }
 export async function esci() { await sb.auth.signOut(); }
 export async function recuperaPassword(email) {
+  // FIX: NON mettere "#/reimposta" nel redirectTo. Supabase aggiunge da sé
+  // il token di sessione nell'URL come frammento "#access_token=...&type=
+  // recovery...": se il redirectTo ha GIÀ un "#" (come "#/reimposta", la
+  // nostra rotta), il risultato è un URL con token "incollato" subito dopo
+  // la nostra rotta, in un punto che non tutte le versioni della libreria
+  // Supabase interpretano correttamente — a volte la sessione di recupero
+  // non viene proprio creata, e l'utente si ritrova bloccato alla schermata
+  // di login senza nessun errore chiaro. Lasciando il redirectTo "pulito"
+  // (senza frammento), Supabase aggiunge il SUO token come unico frammento,
+  // senza ambiguità. main.js riconosce comunque il link di recupero
+  // (cerca "type=recovery" nell'hash) e porta l'utente alla schermata
+  // giusta per scegliere la nuova password.
   const { error } = await sb.auth.resetPasswordForEmail(email,
-    { redirectTo: location.origin + location.pathname + '#/reimposta' });
+    { redirectTo: location.origin + location.pathname });
   if (error) throw new Error(messaggio(error));
 }
 export async function nuovaPassword(password) {

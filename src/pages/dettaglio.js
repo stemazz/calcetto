@@ -2,15 +2,15 @@
 // DETTAGLIO PARTITA — squadre (N), risultato, marcatori, voti+commenti (anonimi),
 // MVP risultato, stato votazioni.
 // ============================================================================
-import { state, sonoAdminOTuttofare, profiloPerId } from '../state.js';
+import { state, sonoAdmin, sonoAdminOTuttofare, profiloPerId } from '../state.js';
 import {
   singolaPartita, iscrittiPartita, squadrePartita, marcatoriPartita, risultatiPartita,
   votiConCommentiPartita, medieVotiPartita, mioMVPScelto, risultatoMVP, candidatiMVP,
-  assegnaMagliettaIconica,
+  assegnaMagliettaIconica, fotoPartita, caricaFotoPartita, eliminaFotoPartita,
 } from '../api.js';
 import {
   el, fmtData, fmtScadenza, avatar, nomeProfilo, toast, spinner, vuoto, scaricaICS,
-  testoInvitoPartita, condividiWhatsApp,
+  testoInvitoPartita, condividiWhatsApp, ridimensiona,
 } from '../ui.js';
 
 const COLORI_SQUADRA = {
@@ -23,13 +23,14 @@ const COLORI_SQUADRA = {
 export async function renderizzaDettaglio(app, id) {
   app.append(spinner());
   const userId = state.sessione.user.id;
-  const [p, iscritti, squadre, marcatori, risultati, votiCC, medie, mvpMio, mvpRis, candidati] = await Promise.all([
+  const [p, iscritti, squadre, marcatori, risultati, votiCC, medie, mvpMio, mvpRis, candidati, foto] = await Promise.all([
     singolaPartita(id), iscrittiPartita(id), squadrePartita(id),
     marcatoriPartita(id), risultatiPartita(id).catch(() => []),
     votiConCommentiPartita(id), medieVotiPartita(id),
     mioMVPScelto(id, userId).catch(() => null),
     risultatoMVP(id).catch(() => []),
     candidatiMVP(id).catch(() => []),
+    fotoPartita(id).catch(() => []),
   ]);
   app.innerHTML = '';
 
@@ -255,6 +256,50 @@ export async function renderizzaDettaglio(app, id) {
     app.append(el('div', { class: 'card' }, [
       el('div', { class: 'card-titolo' }, ['👕 Maglietta più iconica']),
       ...corpo,
+    ]));
+  }
+
+  // Foto di gruppo — chi ha partecipato (iscritto a questa partita) o
+  // l'admin possono caricarne; chi le ha caricate (o l'admin) può eliminarle.
+  {
+    const puoCaricare = sonoAdmin() || iscritti.some(g => g.id === userId);
+    const griglia = el('div', { class: 'foto-partita-grid' });
+    const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' });
+    const btnAggiungi = el('button', { class: 'btn btn-ghost btn-mini' }, ['➕ Aggiungi foto']);
+    btnAggiungi.addEventListener('click', () => input.click());
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      btnAggiungi.disabled = true; btnAggiungi.textContent = 'Carico…';
+      try {
+        const ridotta = await ridimensiona(file, 1280, 0.85);
+        await caricaFotoPartita(p.id, userId, ridotta);
+        toast('Foto aggiunta! 📷');
+        renderizzaDettaglio(app, id);
+      } catch (e) { toast(e.message, 'errore'); btnAggiungi.disabled = false; btnAggiungi.textContent = '➕ Aggiungi foto'; }
+    });
+
+    function cellaFoto(f) {
+      const puoEliminare = sonoAdmin() || f.caricato_da === userId;
+      const cella = el('div', { class: 'foto-partita-cella' }, [
+        el('a', { href: f.url, target: '_blank', rel: 'noopener' }, [
+          el('img', { src: f.url, alt: 'Foto partita', class: 'foto-partita-img' }),
+        ]),
+        puoEliminare ? el('button', { class: 'foto-partita-elimina', title: 'Elimina foto',
+          onclick: async () => {
+            if (!window.confirm('Eliminare questa foto?')) return;
+            try { await eliminaFotoPartita(f.id, f.url); cella.remove(); }
+            catch (e) { toast(e.message, 'errore'); }
+          } }, ['🗑']) : null,
+      ]);
+      return cella;
+    }
+    griglia.append(...foto.map(cellaFoto));
+
+    app.append(el('div', { class: 'card' }, [
+      el('div', { class: 'card-titolo' }, [`📷 Foto partita (${foto.length})`]),
+      foto.length ? griglia : el('div', { class: 'vuoto' }, ['Ancora nessuna foto: carica la prima!']),
+      puoCaricare ? el('div', { style: 'margin-top:10px' }, [input, btnAggiungi]) : null,
     ]));
   }
 
